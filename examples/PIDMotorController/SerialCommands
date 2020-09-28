@@ -1,0 +1,5 @@
+{"cmd":"set_position","param":50}
+{"cmd":"set_speed","param":50}
+{"cmd":"set_mode","param":"PID_POSITION_MODE"}  ...PID_SPEED_MODE, DC_MOTOR_MODE, STOP, CHANGING_INERTIA_MODE
+
+{"cmd":"set_parameters","Kp":0.5, "Ki":0, "Kd":0.1}
