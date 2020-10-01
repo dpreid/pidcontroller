@@ -43,8 +43,7 @@ volatile float encoderAngVel = 0;
 //volatile float encoderAngVelLast = 0;
 volatile int encoder_direction = 1;     //+1 CCW, -1 CW.
 volatile int encoder_direction_last = 1;
-//unsigned long current_time = 0;   //for PID position
-//unsigned long previous_time = 0;
+
 unsigned long current_time_index = 0;
 unsigned long previous_time_index = 0;
 
@@ -52,8 +51,8 @@ unsigned long previous_time_index = 0;
 int set_position = 0;     //the position the user has set
 int set_speed = 0;        //user set position for PID_Speed mode and DC_Motor mode
 volatile float Kp = 0.5;               //PID parameters
-volatile float Ki = 0;
-volatile float Kd = 0.1;
+volatile float Ki = 0.5;
+volatile float Kd = 0;
 float maxKp = 10;
 float maxKi = 10;
 float maxKd = 10;
@@ -89,10 +88,10 @@ bool led_index_on = false;
 
 Motor motor = Motor(AIN1, AIN2, PWMA, offset, STBY);
 
-int speed_limit = 50;
+int speed_limit = 100;
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 
-int pid_interval = 3;       //ms, for a simple timer interval to run calculation of PID parameters. Do I need to include a true timer interrupt?
+int pid_interval = 1;       //ms, for a simple timer interval to run calculation of PID parameters. Do I need to include a true timer interrupt?
 
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 int stopped_count = 0;
@@ -253,11 +252,6 @@ void Sm_State_PID_Position(void){
 }
 
 void Sm_State_PID_Speed(void){
-  //calculate the PID parameters but limit to specific frequency
-//  if(millis() % pid_interval == 0){
-//      calculateSpeedPID();
-//      //Check_Stopped();
-//    }
 
     doInterruptAB = false;
     doInterruptIndex = true;
@@ -272,9 +266,13 @@ void Sm_State_PID_Speed(void){
    }
 
    setRotationLEDs(PID_signal);
-
-  //Serial.println(error_speed);
-  report_encoder_speed();
+  Serial.print("error value = ");
+  Serial.println(error_speed);
+  Serial.print("encoder speed = ");
+  Serial.println(encoderAngVel);
+  Serial.print("PID_signal = ");
+  Serial.println(PID_signal);
+  //report_encoder_speed();
   SmState = STATE_PID_SPEED_MODE;
 }
 
@@ -293,7 +291,8 @@ void Sm_State_DC_Motor(void){
   //set led pins
   setRotationLEDs(set_speed);
 
-  report_encoder_speed();
+  Serial.println(encoder_direction);
+  //report_encoder_speed();
   SmState = STATE_DC_MOTOR_MODE;
 }
 
@@ -344,7 +343,7 @@ void setup() {
   digitalWrite(ledPowerOn, HIGH);   //just to show that arduino is on.
   
   //TESTING SWITCHING INTERRUPTS ON/OFF FOR DIFFERENT MODES
-  //interrupts();
+  
   // encoder pin on interrupt (pin 2)
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
   // encoder pin on interrupt (pin 3)
@@ -407,22 +406,13 @@ StateType readSerialJSON(StateType SmState){
   } else if(strcmp(cmd, "set_speed")==0){
       if(SmState == STATE_PID_SPEED_MODE || SmState == STATE_DC_MOTOR_MODE){
         int new_speed = doc["param"];
-        if(new_speed >= -speed_limit && new_speed <= speed_limit){
-          set_speed = new_speed;
-        } else if(new_speed > speed_limit){
-          set_speed = speed_limit;
-        } else{
-          set_speed = -speed_limit;
-        }
-          Serial.print("speed set to: ");
-          Serial.println(set_speed);
+        set_speed = new_speed;
       } else{
         Serial.println("In wrong state to set speed");
       }
       
     } 
     else if(strcmp(cmd, "set_mode")==0){
-      //noInterrupts();   //reset the interrupts
       
       const char* new_mode = doc["param"];
       if(strcmp(new_mode, "PID_SPEED_MODE") == 0){
@@ -438,7 +428,7 @@ StateType readSerialJSON(StateType SmState){
         SmState = STATE_CHANGING_INERTIA;
       }
       else if(strcmp(new_mode, "STOP") == 0){
-        SmState = STATE_AWAITING_STOP;          //NO AWAITING STOP CURRENTLY.
+        SmState = STATE_STOPPED;          //NO AWAITING STOP CURRENTLY.
                           
       }
       
@@ -481,77 +471,7 @@ StateType readSerialJSON(StateType SmState){
 
 
 
-//OLD VERSION WITH NO INPUT AND RETURN STATE, SIMPLY PERFORMS ACTIONS RATHER THAN SETTING STATE MACHINE.
-//void readSerialJSON(){
-//  if(Serial.available() > 0){
-//  
-//    Serial.readBytesUntil(10, command, COMMAND_SIZE);
-//    deserializeJson(doc, command);
-//
-//    const char* cmd = doc["cmd"];
-//
-//    if(strcmp(cmd,"forward")==0){
-//      Serial.println("{\"cmd\":\"forward\"}");
-//      motor.drive(speed_limit);
-//    } 
-//    else if(strcmp(cmd,"backward")==0){
-//      Serial.println("{\"cmd\":\"backward\"}");
-//      motor.drive(-speed_limit);
-//  } 
-//  else if(strcmp(cmd,"brake") == 0){
-//    Serial.println("{\"cmd\":\"brake\"}");
-//    motor.brake();
-//  } 
-//  else if(strcmp(cmd, "set_position")==0){
-//      int new_position = doc["param"];
-//      if(new_position >= -position_limit && new_position <= position_limit){
-//        set_position = new_position;
-//        Serial.print("position set to: ");
-//        Serial.println(set_position);
-//      } else{
-//        Serial.println("position needs to be between -1000 and 1000");
-//      }
-//      
-//  }
-//  else if(strcmp(cmd, "PID") == 0){
-//    Serial.print("Set position = ");
-//    Serial.println(set_position);
-//    Serial.print("Encoder position = ");
-//    Serial.println(encoderPos);
-//    Serial.print("Kp = ");
-//    Serial.println(proportional_term);
-//    Serial.print("Ki = ");
-//    Serial.println(integral_term);
-//    Serial.print("Kd = ");
-//    Serial.println(derivative_term);
-//  }
-//  } 
-//}
 
-//void report_encoder(void)
-//{
-//  unsigned long startTime = 0;
-//
-//  bool waiting = true;
-//  startTime = millis();
-//
-//  while(waiting){
-//    if ((millis() - startTime) >= report_interval){
-//      if (encoderPlain){
-//        Serial.println(encoderPos);
-//      }
-//      else{
-//        Serial.print("{\"enc\":");
-//        Serial.print(encoderPos);
-//        Serial.print(",\"time\":");
-//        Serial.print(millis());  
-//        Serial.println("}");
-//      }
-//      waiting = false;
-//    }
-//  }  
-//  
-//}
 
 //outputs encoder position to serial bus.
 void report_encoder(void)
@@ -598,20 +518,12 @@ void doEncoderA() {
   encoderPosLast = encoderPos;
   encoderPos += (A_set != B_set) ? +1 : -1;
   encoderWrap();
-
-  //get direction of rotation
-  encoder_direction_last = encoder_direction;
-  if(encoderPos - encoderPosLast >= 0){
-    encoder_direction = 1;
-  } else{
-    encoder_direction = -1;
-  }
   
 }
 
 // Interrupt on B changing state
 void doEncoderB() {
-  if(doInterruptAB){
+  //if(doInterruptAB){
   //Serial.println("checking B");
   // Test transition
   B_set = digitalRead(encoderPinB) == HIGH;
@@ -620,13 +532,20 @@ void doEncoderB() {
   encoderPos += (A_set == B_set) ? +1 : -1;
   encoderWrap();
 
-  
-//  driver();
-  }
+ 
+  //}
 }
 
 void doIndexPin(void){
   if(doInterruptIndex){
+    //get direction of rotation
+    encoder_direction_last = encoder_direction;
+    if(encoderPos - encoderPosLast >= 0){
+      encoder_direction = -1;
+    } else{
+      encoder_direction = 1;
+    }
+  
     previous_time_index = current_time_index;
     current_time_index = millis();
   
@@ -801,6 +720,6 @@ void TC3_Handler() {
   // we run the TimerInterrupt() function.
   if (TC->INTFLAG.bit.MC0 == 1) {
     TC->INTFLAG.bit.MC0 = 1;
-    TimerInterrupt();
+    TimerInterrupt();           //THE FUNCTION TO RUN ON THE TIMER
   }
 }
