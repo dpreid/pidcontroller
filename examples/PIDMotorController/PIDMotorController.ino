@@ -50,12 +50,9 @@ unsigned long previous_time_index = 0;
 //other user set values
 int set_position = 0;     //the position the user has set
 int set_speed = 0;        //user set position for PID_Speed mode and DC_Motor mode
-volatile float Kp = 0.5;               //PID parameters
-volatile float Ki = 0.5;
-volatile float Kd = 0;
-float maxKp = 10;
-float maxKi = 10;
-float maxKd = 10;
+float Kp = 0.5;               //PID parameters
+float Ki = 0;
+float Kd = 0.1;
 
 //pid calculated values
 volatile int error = 0;
@@ -91,11 +88,9 @@ Motor motor = Motor(AIN1, AIN2, PWMA, offset, STBY);
 int speed_limit = 100;
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 
-int pid_interval = 1;       //ms, for a simple timer interval to run calculation of PID parameters. Do I need to include a true timer interrupt?
+int pid_interval = 3;       //ms, for timer interrupt
 
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
-int stopped_count = 0;
-int stopped_last_pos = 0;
 
 bool doInterruptAB = false;
 bool doInterruptIndex = false;
@@ -109,14 +104,13 @@ float timer_interrupt_freq = 1000/pid_interval;   //200Hz once every 5ms
  */
 typedef enum
 {
-  STATE_CALIBRATE,      //state for resetting the encoder 0 position
+  STATE_CALIBRATE,      //state for resetting the encoder 0 position to the index point
   STATE_AWAITING_STOP,  //checking if the motor has stopped
   STATE_STOPPED,        //no drive to motor
   STATE_PID_SPEED_MODE, //pid controller mode - 1st order, speed functions
   STATE_PID_POSITION_MODE,  //pid controller - 2nd order, position functions
   STATE_DC_MOTOR_MODE,    //regular dc motor functions with no PID controller
-  STATE_AWAITING_NEW_COMMAND,
-  STATE_CHANGING_INERTIA, //mode for changing position of the governor.
+  STATE_CONFIGURE, //mode for changing position of the governor.
 } StateType;
 
 //state Machine function prototypes
@@ -127,8 +121,7 @@ void Sm_State_Stopped(void);
 void Sm_State_PID_Speed(void);
 void Sm_State_PID_Position(void);
 void Sm_State_DC_Motor(void);
-void Sm_State_Awaiting_New_Command(void);
-void Sm_State_Change_Inertia(void);
+void Sm_State_Configure(void);
 
 /**
  * Type definition used to define the state
@@ -152,11 +145,10 @@ StateMachineType StateMachine[] =
   {STATE_PID_SPEED_MODE, Sm_State_PID_Speed},
   {STATE_PID_POSITION_MODE, Sm_State_PID_Position},
   {STATE_DC_MOTOR_MODE, Sm_State_DC_Motor},
-  {STATE_AWAITING_NEW_COMMAND, Sm_State_Awaiting_New_Command},
-  {STATE_CHANGING_INERTIA, Sm_State_Change_Inertia}
+  {STATE_CONFIGURE, Sm_State_Configure}
 };
  
-int NUM_STATES = 8;
+int NUM_STATES = 7;
 
 /**
  * Stores the current state of the state machine
@@ -168,20 +160,24 @@ StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
 
 
 void Sm_State_Stopped(void){
-  motor.brake();
+  //motor.brake();
 
-  doInterruptAB = false;
+  //doInterruptAB = false;
   doInterruptIndex = false;
+
+  set_position = encoderPos;   //reset the user set values
+  set_speed = 0;
   
-  //report_encoder();
+  report_encoder();
   SmState = STATE_STOPPED;
 }
 
 void Sm_State_Awaiting_Stop(void){
+  motor.brake();
+  
   bool moving = true;
   int lastPos = 0;
   int thisPos = 0;
-  //int sameNeeded = 10;
   int sameCount = sameNeeded;   //sameNeeded has become a global variable
   while (moving)
   {
@@ -213,24 +209,9 @@ void Sm_State_Awaiting_Stop(void){
   SmState = STATE_STOPPED;    //transition to the stopped state.
 }
 
-void Sm_State_Awaiting_New_Command(void){
-  motor.brake();
-  //report_encoder();
-  
-  SmState = STATE_AWAITING_NEW_COMMAND;
-}
-
 void Sm_State_PID_Position(void){
-    doInterruptAB = true;
+    //doInterruptAB = true;
     doInterruptIndex = false;
-    
-  //calculate the PID parameters but limit to specific frequency
-//  if(millis() % pid_interval == 0){
-//      calculatePositionPID();
-//      //Check_Stopped();
-//    }
-
-    
 
 //limit the rotation speed for now!
 
@@ -244,16 +225,14 @@ void Sm_State_PID_Position(void){
 
    setRotationLEDs(PID_signal);
   
-  //Serial.println(error);
   report_encoder();
   SmState = STATE_PID_POSITION_MODE;
 
-  
 }
 
 void Sm_State_PID_Speed(void){
 
-    doInterruptAB = false;
+    //doInterruptAB = false;
     doInterruptIndex = true;
     
 //limit the rotation speed for now!
@@ -265,39 +244,52 @@ void Sm_State_PID_Speed(void){
       motor.drive(-speed_limit);
    }
 
-   setRotationLEDs(PID_signal);
-  Serial.print("error value = ");
-  Serial.println(error_speed);
-  Serial.print("encoder speed = ");
-  Serial.println(encoderAngVel);
-  Serial.print("PID_signal = ");
-  Serial.println(PID_signal);
-  //report_encoder_speed();
+  setRotationLEDs(PID_signal);    //should the LEDs reflect actual rotation or the PID signal?
+  report_encoder_speed();
   SmState = STATE_PID_SPEED_MODE;
 }
 
 void Sm_State_Start_Calibration(void){
-  Serial.println("Entered calibration mode");
   
+  //doInterruptAB = false;
+  doInterruptIndex = true;
+
+  bool index_state = led_index_on;
+
+  while(index_state == led_index_on){
+    motor.drive(-encoder_direction * 20);
+  }
+
+  motor.brake();
+
+  encoderPos = 0;
+
+  delay(100);
+  
+  if(encoderPos > 10 || encoderPos < -10){    //allowed calibration error
+    SmState = STATE_CALIBRATE;  
+  } else{
+    SmState = STATE_STOPPED;  
+  }
   
 }
 
 void Sm_State_DC_Motor(void){
   motor.drive(set_speed);
 
-  doInterruptAB = false;
+  //doInterruptAB = false;
   doInterruptIndex = true;
   
-  //set led pins
-  setRotationLEDs(set_speed);
+  setRotationLEDs(encoderAngVel);
 
-  Serial.println(encoder_direction);
-  //report_encoder_speed();
+  report_encoder_speed();
   SmState = STATE_DC_MOTOR_MODE;
 }
 
-void Sm_State_Change_Inertia(void){
-  Serial.println("Entered change inertia mode");
+void Sm_State_Configure(void){
+  Serial.println("Entered configuration mode");
+  //not implemented, so jumps straight to stopped state
+  SmState = STATE_STOPPED;
 }
 
 //STATE MACHINE RUN FUNCTION
@@ -315,7 +307,7 @@ void Sm_Run(void)
   
 }
 
-//This function is run on a timer interrupt defined by timer_interrupt_freq.
+//This function is run on a timer interrupt defined by pid_interval/timer_interrupt_freq.
 void TimerInterrupt(void){
   if(SmState == STATE_PID_POSITION_MODE){
      calculatePositionPID();
@@ -342,13 +334,11 @@ void setup() {
   
   digitalWrite(ledPowerOn, HIGH);   //just to show that arduino is on.
   
-  //TESTING SWITCHING INTERRUPTS ON/OFF FOR DIFFERENT MODES
-  
   // encoder pin on interrupt (pin 2)
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
   // encoder pin on interrupt (pin 3)
   attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
-// encoder pin on interrupt (pin 11)
+  // encoder pin on interrupt (pin 11)
   attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 
   current_time_index = millis();   
@@ -357,7 +347,7 @@ void setup() {
   Serial.setTimeout(50);
   Serial.begin(57600);
 
-  startTimer(timer_interrupt_freq);
+  startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
    while (! Serial);
 
@@ -369,11 +359,6 @@ void loop() {
   Sm_Run();  
 }
 
-//POSSIBLE COMMANDS:
-//set_position - only runs in STATE_PID_POSITION mode, takes in a parameter between -1000 and 1000 for the encoder position.
-//set_speed - only runs in STATE_PID_SPEED_MODE, takes a parameter between -255, 255. Can be limited by speed_limit variable.
-//change_mode - changes between PID_SPEED, PID_POSITION, DC_MOTOR, CHANGE_INERTIA and AWAITING_STOP modes.
-// set_parameters - to set the PID parameters Kp, Ki and Kd as well as any other necessary parameters.
 
 StateType readSerialJSON(StateType SmState){
   if(Serial.available() > 0){
@@ -384,14 +369,10 @@ StateType readSerialJSON(StateType SmState){
     const char* cmd = doc["cmd"];
     
     if(strcmp(cmd, "set_position")==0){
-      if(SmState == STATE_PID_POSITION_MODE || SmState == STATE_AWAITING_NEW_COMMAND){
-        SmState = STATE_PID_POSITION_MODE;    //set state
-        stopped_count = 0;                    //and reset count for checking stopped.
+      if(SmState == STATE_PID_POSITION_MODE){
         int new_position = doc["param"];
         if(new_position >= -position_limit && new_position <= position_limit){
           set_position = new_position;
-          Serial.print("position set to: ");
-          Serial.println(set_position);
         } else{
           Serial.print("position needs to be between -");
           Serial.print(position_limit);
@@ -415,55 +396,58 @@ StateType readSerialJSON(StateType SmState){
     else if(strcmp(cmd, "set_mode")==0){
       
       const char* new_mode = doc["param"];
-      if(strcmp(new_mode, "PID_SPEED_MODE") == 0){
+
+      if(SmState == STATE_STOPPED){
+        
+        if(strcmp(new_mode, "PID_SPEED_MODE") == 0){
         SmState = STATE_PID_SPEED_MODE;
-      } 
-      else if(strcmp(new_mode, "PID_POSITION_MODE") == 0){
-        SmState = STATE_PID_POSITION_MODE;
-      }
-      else if(strcmp(new_mode, "DC_MOTOR_MODE") == 0){
-        SmState = STATE_DC_MOTOR_MODE;
-      }
-      else if(strcmp(new_mode, "CHANGING_INERTIA_MODE") == 0){
-        SmState = STATE_CHANGING_INERTIA;
-      }
-      else if(strcmp(new_mode, "STOP") == 0){
-        SmState = STATE_STOPPED;          //NO AWAITING STOP CURRENTLY.
-                          
+        } 
+        else if(strcmp(new_mode, "PID_POSITION_MODE") == 0){
+          SmState = STATE_PID_POSITION_MODE;
+        }
+        else if(strcmp(new_mode, "DC_MOTOR_MODE") == 0){
+          SmState = STATE_DC_MOTOR_MODE;
+        }
+        else if(strcmp(new_mode, "CONFIGURE") == 0){
+          SmState = STATE_CONFIGURE;
+        }
+        else if(strcmp(new_mode, "CALIBRATE") == 0){
+          SmState = STATE_CALIBRATE;
+        }
+        
+      } else {
+        
+        if(strcmp(new_mode, "STOP") == 0){
+          SmState = STATE_AWAITING_STOP;          
+        } else {
+          Serial.println("Cannot change mode unless stopped first");
+        }
+        
       }
       
+   
     } else if(strcmp(cmd, "set_parameters")==0){
-      int new_Kp = doc["Kp"];
-      int new_Ki = doc["Ki"];
-      int new_Kd = doc["Kd"];
 
-      if(new_Kp >= -maxKp && new_Kp <= maxKp){
-        Kp = new_Kp;
-      } else if(new_Kp > maxKp){
-        Kp = maxKp;
-      } else{
-        Kp = -maxKp;
+      if(!doc["Kp"].isNull()){
+        Kp = doc["Kp"];
       }
 
-      if(new_Ki >= -maxKi && new_Ki <= maxKi){
-        Ki = new_Ki;
-      } else if(new_Ki > maxKi){
-        Ki = maxKi;
-      } else{
-        Ki = -maxKi;
+      if(!doc["Ki"].isNull()){
+        Ki = doc["Ki"];
       }
 
-      if(new_Kd >= -maxKd && new_Kd <= maxKd){
-        Kd = new_Kd;
-      } else if(new_Kd > maxKd){
-        Kd = maxKd;
-      } else{
-        Kd = -maxKd;
+      if(!doc["Kd"].isNull()){
+        Kd = doc["Kd"];
+      }
+
+      if(!doc["dt"].isNull()){
+        pid_interval = doc["dt"];
+      }
+
+      if(!doc["N_errors"].isNull()){
+        numErrors = doc["N_errors"];
       }
     }
-
-
-
     
   }
       return SmState;     //return whatever state it changed to or maintain the state.
@@ -509,10 +493,9 @@ void report_encoder_speed(void){
 }
 
 // Interrupt on A changing state
-//CURRENTLY ALWAYS DOING ENCODER A INTERRUPT IN ORDER TO GET DIRECTION
+//CURRENTLY ALWAYS DOING ENCODER INTERRUPTS IN ORDER TO GET DIRECTION
 void doEncoderA() {
-  //Serial.println("checking A");
-  // Test transition
+  
   A_set = digitalRead(encoderPinA) == HIGH;
   // and adjust counter + if A leads B
   encoderPosLast = encoderPos;
@@ -524,8 +507,7 @@ void doEncoderA() {
 // Interrupt on B changing state
 void doEncoderB() {
   //if(doInterruptAB){
-  //Serial.println("checking B");
-  // Test transition
+ 
   B_set = digitalRead(encoderPinB) == HIGH;
   // and adjust counter + if B follows A
   encoderPosLast = encoderPos;
@@ -626,27 +608,6 @@ void calculateSpeedPID(){
     PID_signal = proportional_term + integral_term + derivative_term;
 }
 
-
-//This is similar to the Awaiting stop state, however, it cannot interrupt the motor functions as it is checking
-//whether the motor has stopped, not waiting until it does.
-void Check_Stopped(void){
-  if(encoderPos == stopped_last_pos){
-    Serial.print("Stopped count = ");
-    Serial.println(stopped_count);
-    stopped_count++;
-  } else {
-    stopped_count = 0;
-  }
-
-  
-  if(stopped_count >= sameNeeded){
-    Serial.println("Stopped");
-    SmState = STATE_AWAITING_NEW_COMMAND;    //transition to the new state.
-  }
-
-  stopped_last_pos = encoderPos;
-  
-}
 
 void setRotationLEDs(float value){
   if(value > 0){

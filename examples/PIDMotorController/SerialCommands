@@ -1,11 +1,14 @@
-{"cmd":"set_position","param":50}
-{"cmd":"set_speed","param":50}
+{"cmd":"set_position","param":50}		//position parameter between -1000 and 1000
+{"cmd":"set_speed","param":50}		//speed parameter in rpm
 
 
+{"cmd":"set_mode","param":"CALIBRATE"}
 {"cmd":"set_mode","param":"PID_POSITION_MODE"}
-{"cmd":"set_mode","param":"PID_SPEED_MODE"}
-{"cmd":"set_mode","param":"DC_MOTOR_MODE"}
+{"cmd":"set_mode","param":"PID_SPEED_MODE"}	//set_speed parameter in rpm
+{"cmd":"set_mode","param":"DC_MOTOR_MODE"}	//set_speed parameter 0 - 255
+{"cmd":"set_mode","param":"CONFIGURE"}
 {"cmd":"set_mode","param":"STOP"}
 
 
-{"cmd":"set_parameters","Kp":0.5, "Ki":0, "Kd":0.1}
+
+{"cmd":"set_parameters","Kp":0.5, "Ki":0, "Kd":0.1, "dt":3, "N_errors":10}	//dt in ms
