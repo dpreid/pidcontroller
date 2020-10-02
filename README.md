@@ -12,7 +12,7 @@ the 'examples' folder contains the PIDMotorController code itself. Current examp
 {"cmd":"set_mode","param":"PID_POSITION_MODE"}
 {"cmd":"set_mode","param":"PID_SPEED_MODE"}	//set_speed parameter in rpm
 {"cmd":"set_mode","param":"DC_MOTOR_MODE"}	//set_speed parameter 0 - 255
-{"cmd":"set_mode","param":"CONFIGURE"}		//still to be implemented
+{"cmd":"set_mode","param":"CONFIGURE"}		//sets the encoder index position to 0.
 {"cmd":"set_mode","param":"STOP"}
 
 
