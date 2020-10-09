@@ -116,6 +116,8 @@ int sameNeeded = 100;        //number of loops with the same encoder position to
 bool doInterruptAB = false;
 bool doInterruptIndex = false;
 
+bool lowerLimitReached = false;
+
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
 float timer_interrupt_freq = 1000/pid_interval;   //200Hz once every 5ms
@@ -282,15 +284,28 @@ void Sm_State_Start_Calibration(void){
     motor.drive(-encoder_direction * 20);
   }
 
-  motor.brake();
+  int t = millis();
+  while(millis() < t + 100){
+    motor.brake();  
+  }
+  
 
   encoderPos = 0;
 
   delay(100);
   
+  
   if(encoderPos > 10 || encoderPos < -10){    //allowed calibration error
     SmState = STATE_CALIBRATE;  
   } else{
+    while(!lowerLimitReached){
+      stepper.setSpeed(10);
+      stepper.step(100);
+      delay(1000);
+    }
+    stepper.setSpeed(10);
+    stepper.step(-100);
+    lowerLimitReached = false;
     SmState = STATE_STOPPED;  
   }
   
@@ -694,6 +709,7 @@ void setRotationLEDs(float value){
 
 void doLimitLower(void){
   Serial.println("lower limit reached");
+  lowerLimitReached = true;
   stepper.setSpeed(0);    //stop the stepper from going any further
   governor_pos = 0;       //this is our zero point
   set_governor_pos = 0;
