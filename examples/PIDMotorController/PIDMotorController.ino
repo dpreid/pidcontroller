@@ -1,3 +1,4 @@
+
 /*
  * PIDMotorController
  * David Reid
@@ -9,18 +10,24 @@
  * Timer interrupt functions from https://github.com/nebs/arduino-zero-timer-demo/
  */
 
-
+#include <Stepper.h>
 #include <QueueArray.h>
-
 #include <MotorController.h>
+
 #include "ArduinoJson-v6.9.1.h"
 
 
 // Pins on Motor Driver board.
-#define AIN1 9
-#define AIN2 10
+#define AIN1 5
+#define AIN2 4
 #define PWMA 6
 #define STBY 8
+//Pins for Stepper motor - governor control
+#define SIN1 7
+#define SIN2 19       //motors wired up incorrectly??
+#define SIN3 12
+#define SIN4 18
+
 
 #define encoderPinA 2     //these pins all have interrupts on them.
 #define encoderPinB 3
@@ -31,6 +38,9 @@
 #define ledIndex 15
 #define ledNegative 16
 #define ledPowerOn 17
+
+#define limitSwitchLower 13
+#define limitSwitchUpper 9
 
 bool debug = false;
 unsigned long report_interval = 10;
@@ -84,6 +94,17 @@ const int offset = 1;
 bool led_index_on = false;
 
 Motor motor = Motor(AIN1, AIN2, PWMA, offset, STBY);
+
+//stepper variables====================
+volatile float governor_pos = 0;
+volatile float set_governor_pos = 0;
+float max_governor_pos = 100;
+//int steps_in_one_rotation = 513;   //32 actual steps * 16.032 internal gearing PROTOTYPE MOTOR
+int steps_in_one_rotation = 2048;   //prototype motor 2
+float dist_one_rotation = 0.5;    //mm increase in height of lower governor position
+long stepper_speed = 100;
+Stepper stepper = Stepper(steps_in_one_rotation, SIN1, SIN2, SIN3, SIN4);
+//======================================
 
 int speed_limit = 100;
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
@@ -249,6 +270,7 @@ void Sm_State_PID_Speed(void){
   SmState = STATE_PID_SPEED_MODE;
 }
 
+//Also needs to include calibrating the zero point of the governor.
 void Sm_State_Start_Calibration(void){
   
   //doInterruptAB = false;
@@ -286,9 +308,35 @@ void Sm_State_DC_Motor(void){
   SmState = STATE_DC_MOTOR_MODE;
 }
 
+//User sets the governor position that they want. Stepper steps until that position is reached. Limit switch
+//can stop the motion.
 void Sm_State_Configure(void){
-  Serial.println("Entered configuration mode");
-  //not implemented, so jumps straight to stopped state
+
+  stepper.setSpeed(4);
+  
+  float diff = set_governor_pos - governor_pos;
+  float num_steps_to_take = getStepsFromDistance(diff);
+  
+  Serial.println(num_steps_to_take);
+  
+  if(diff > 0){ 
+    Serial.println("moving up");
+    stepper.step(num_steps_to_take);
+    //governor_pos += dist_one_rotation / steps_in_one_rotation;
+    
+  } else if(diff < 0){
+    Serial.println("moving down");
+    stepper.step(num_steps_to_take);
+    //governor_pos -= dist_one_rotation / steps_in_one_rotation;
+    
+  } 
+    governor_pos = set_governor_pos;
+//  if(diff == 0){ //might need to include a configuration error allowance
+//    stepper.setSpeed(0);
+//    SmState = STATE_STOPPED;
+//  } else{
+//    SmState = STATE_CONFIGURE;
+//  }
   SmState = STATE_STOPPED;
 }
 
@@ -319,18 +367,28 @@ void TimerInterrupt(void){
 // SETUP AND LOOP==================================================================================
 void setup() {
   //setup encoder pins
-  pinMode(encoderPinA, INPUT);
-  pinMode(encoderPinB, INPUT);
-  pinMode(indexPin, INPUT);
-  digitalWrite(encoderPinA, HIGH);  // turn on pull-up resistor
-  digitalWrite(encoderPinB, HIGH);  // turn on pull-up resistor
-  digitalWrite(indexPin, HIGH);
+  pinMode(encoderPinA, INPUT_PULLUP);
+  pinMode(encoderPinB, INPUT_PULLUP);
+  pinMode(indexPin, INPUT_PULLUP);
+  //digitalWrite(encoderPinA, HIGH);  // turn on pull-up resistor....DONE ABOVE
+  //digitalWrite(encoderPinB, HIGH);  // turn on pull-up resistor
+  //digitalWrite(indexPin, HIGH);
 
+  //setup stepper motor pins
+  pinMode(SIN1, OUTPUT);
+  pinMode(SIN2, OUTPUT);
+  pinMode(SIN3, OUTPUT);
+  pinMode(SIN4, OUTPUT);
+  
   //setup led output pins
   pinMode(ledPositive, OUTPUT);
   pinMode(ledIndex, OUTPUT);
   pinMode(ledNegative, OUTPUT);
   pinMode(ledPowerOn, OUTPUT);
+
+  //setup limit switches
+  pinMode(limitSwitchLower, INPUT_PULLUP);
+  pinMode(limitSwitchUpper, INPUT_PULLUP);
   
   digitalWrite(ledPowerOn, HIGH);   //just to show that arduino is on.
   
@@ -340,6 +398,10 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
   // encoder pin on interrupt (pin 11)
   attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+
+  //interruptsfor limit switches
+  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, LOW);   //do I want to run it once on falling or constantly when LOW?
+  attachInterrupt(digitalPinToInterrupt(limitSwitchUpper), doLimitUpper, LOW);   
 
   current_time_index = millis();   
   previous_time_index = millis();
@@ -409,6 +471,7 @@ StateType readSerialJSON(StateType SmState){
           SmState = STATE_DC_MOTOR_MODE;
         }
         else if(strcmp(new_mode, "CONFIGURE") == 0){
+          Serial.println("Entering configuration state");
           SmState = STATE_CONFIGURE;
         }
         else if(strcmp(new_mode, "CALIBRATE") == 0){
@@ -446,6 +509,12 @@ StateType readSerialJSON(StateType SmState){
 
       if(!doc["N_errors"].isNull()){
         numErrors = doc["N_errors"];
+      }
+    } else if(strcmp(cmd, "set_height") == 0){
+      float new_pos = doc["param"];
+      if(new_pos <= max_governor_pos && new_pos >= 0){
+        Serial.println("new governor position set");
+        set_governor_pos = new_pos;
       }
     }
     
@@ -620,6 +689,30 @@ void setRotationLEDs(float value){
     digitalWrite(ledPositive, LOW);
     digitalWrite(ledNegative, LOW);
   }
+}
+
+
+void doLimitLower(void){
+  Serial.println("lower limit reached");
+  stepper.setSpeed(0);    //stop the stepper from going any further
+  governor_pos = 0;       //this is our zero point
+  set_governor_pos = 0;
+
+  SmState = STATE_STOPPED;
+  
+}
+
+void doLimitUpper(void){
+  Serial.println("upper limit reached");
+}
+
+//RETURN: the number of steps required to move the governor a vertical distance (in mm) of dist_mm.
+//INPUT: The distance in mm that the governor should move. + upwards; - downwards
+float getStepsFromDistance(float dist_mm){
+  float num_full_turns = dist_mm / dist_one_rotation;  //dist in mm
+  float total_steps = num_full_turns*steps_in_one_rotation;
+
+  return total_steps;
 }
 
 //==================================================================================

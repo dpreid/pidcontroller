@@ -1,6 +1,6 @@
 {"cmd":"set_position","param":50}		//position parameter between -1000 and 1000
 {"cmd":"set_speed","param":50}		//speed parameter in rpm
-
+{"cmd":"set_height","param":10}		//set governor height
 
 {"cmd":"set_mode","param":"CALIBRATE"}
 {"cmd":"set_mode","param":"PID_POSITION_MODE"}
