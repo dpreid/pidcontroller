@@ -327,32 +327,35 @@ void Sm_State_DC_Motor(void){
 //can stop the motion.
 void Sm_State_Configure(void){
 
-  stepper.setSpeed(4);
+  stepper.setSpeed(10);
   
   float diff = set_governor_pos - governor_pos;
-  float num_steps_to_take = getStepsFromDistance(diff);
-  
-  Serial.println(num_steps_to_take);
+  //float num_steps_to_take = getStepsFromDistance(diff);
+
+  Serial.print("gov pos = ");
+  Serial.println(governor_pos);
   
   if(diff > 0){ 
     Serial.println("moving up");
-    stepper.step(num_steps_to_take);
-    //governor_pos += dist_one_rotation / steps_in_one_rotation;
+    //stepper.step(num_steps_to_take);
+    stepper.step(1);
+    governor_pos += dist_one_rotation / steps_in_one_rotation;
     
   } else if(diff < 0){
     Serial.println("moving down");
-    stepper.step(num_steps_to_take);
-    //governor_pos -= dist_one_rotation / steps_in_one_rotation;
+    //stepper.step(num_steps_to_take);
+    stepper.step(-1);
+    governor_pos -= dist_one_rotation / steps_in_one_rotation;
     
   } 
-    governor_pos = set_governor_pos;
-//  if(diff == 0){ //might need to include a configuration error allowance
-//    stepper.setSpeed(0);
-//    SmState = STATE_STOPPED;
-//  } else{
-//    SmState = STATE_CONFIGURE;
-//  }
-  SmState = STATE_STOPPED;
+    //governor_pos = set_governor_pos;
+  if(diff <= 0.001 && diff >= -0.001) { //might need to include a configuration error allowance
+    stepper.setSpeed(0);
+    SmState = STATE_STOPPED;
+  } else{
+    SmState = STATE_CONFIGURE;
+  }
+  //SmState = STATE_STOPPED;
 }
 
 //STATE MACHINE RUN FUNCTION
