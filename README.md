@@ -38,4 +38,3 @@ DC_MOTOR: Runs as a simple DC motor. Set speed is between 0 and 255 (0V and powe
 Schematic of the PIDController setup is shown below:
 
 ![Schematic](/images/PIDControllerSchematic.png)
-Format: ![Alt Text](url)
