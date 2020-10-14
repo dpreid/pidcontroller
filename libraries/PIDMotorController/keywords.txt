@@ -1,0 +1,18 @@
+#######################################
+# Syntax Coloring Map MotorController
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+Motor KEYWORD1 Motor
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+drive KEYWORD2
+brake KEYWORD2
+standby KEYWORD2
+free KEYWORD2
