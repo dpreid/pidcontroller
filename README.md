@@ -35,4 +35,7 @@ PID_POSITION: The mode that allows the disk position to be set and controlled by
 
 DC_MOTOR: Runs as a simple DC motor. Set speed is between 0 and 255 (0V and power supply voltage)
 
+Schematic of the PIDController setup is shown below:
 
+![Schematic](/images/PIDControllerSchematic.png)
+Format: ![Alt Text](url)
