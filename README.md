@@ -5,8 +5,8 @@ MotorController contains the base motor controls for driving the motor forwards 
 the 'examples' folder contains the PIDMotorController code itself. Current example commands are given in the SerialCommands text file and replicated below.
 
 {"cmd":"set_position","param":50}		//position parameter between -1000 and 1000
-{"cmd":"set_speed","param":50}		//speed parameter in rpm
-
+{"cmd":"set_speed","param":50}		//speed parameter in rpm (pid_speed_mode) or 0-255 dc_motor mode)
+{"cmd":"set_height","param":10}		//set the height of the governor
 
 {"cmd":"set_mode","param":"CALIBRATE"}		//still to be implemented
 {"cmd":"set_mode","param":"PID_POSITION_MODE"}
@@ -27,7 +27,7 @@ AWAITING_STOP: The state into which all states enter when the stop command is se
 
 CALIBRATE: rotates the disk until the index point is reached and sets encoder position to 0. Small calibration error allowed.
 
-CONFIGURE: Yet to be implemented. The state within which the governor position can be set.
+CONFIGURE: The state state sets the governor height to set_height.
 
 PID_SPEED: The mode that allows the spinning disk speed to be controlled by the PID controller. Speed set within this mode is in revolutions per minute (rpm).
 
