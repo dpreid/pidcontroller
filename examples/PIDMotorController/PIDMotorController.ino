@@ -13,6 +13,7 @@
 #include <Stepper.h>
 #include <QueueArray.h>
 #include <MotorController.h>
+#include <MotorControllerPmodHB3.h>
 
 #include "ArduinoJson-v6.9.1.h"
 
@@ -93,7 +94,8 @@ const int offset = 1;
 
 bool led_index_on = false;
 
-Motor motor = Motor(AIN1, AIN2, PWMA, offset, STBY);
+//Motor motor = Motor(AIN1, AIN2, PWMA, offset, STBY);    //CHOICE FOR WHICH MOTOR DRIVER TO USE
+MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 
 //stepper variables====================
 volatile float governor_pos = 0;
@@ -188,7 +190,7 @@ void Sm_State_Stopped(void){
   //doInterruptAB = false;
   doInterruptIndex = false;
 
-  set_position = encoderPos;   //reset the user set values
+  set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
   set_speed = 0;
   
   report_encoder();
