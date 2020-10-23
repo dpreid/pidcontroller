@@ -9,7 +9,7 @@
  * 
  * Timer interrupt functions from https://github.com/nebs/arduino-zero-timer-demo/
  */
-
+#include <Adafruit_NeoPixel.h>
 #include <Stepper.h>
 #include <QueueArray.h>
 #include <MotorController.h>
@@ -17,7 +17,10 @@
 
 #include "ArduinoJson-v6.9.1.h"
 
-
+//NeoPixel LED setup
+#define NEOPIXEL_PIN 10
+#define NUMPIXELS 64
+Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 // Pins on Motor Driver board.
 #define AIN1 5
 #define AIN2 4
@@ -188,12 +191,13 @@ void Sm_State_Stopped(void){
   //motor.brake();
 
   //doInterruptAB = false;
-  doInterruptIndex = false;
+  doInterruptIndex = true;       //testing as true
 
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
   set_speed = 0;
-  
-  report_encoder();
+
+  report_encoder_speed();
+  //report_encoder();
   SmState = STATE_STOPPED;
 }
 
@@ -248,7 +252,7 @@ void Sm_State_PID_Position(void){
       motor.drive(-speed_limit);
    }
 
-   setRotationLEDs(PID_signal);
+   //setRotationLEDs(PID_signal);
   
   report_encoder();
   SmState = STATE_PID_POSITION_MODE;
@@ -269,7 +273,7 @@ void Sm_State_PID_Speed(void){
       motor.drive(-speed_limit);
    }
 
-  setRotationLEDs(PID_signal);    //should the LEDs reflect actual rotation or the PID signal?
+  //setRotationLEDs(PID_signal);    //should the LEDs reflect actual rotation or the PID signal?
   report_encoder_speed();
   SmState = STATE_PID_SPEED_MODE;
 }
@@ -319,7 +323,7 @@ void Sm_State_DC_Motor(void){
   //doInterruptAB = false;
   doInterruptIndex = true;
   
-  setRotationLEDs(encoderAngVel);
+  //setRotationLEDs(encoderAngVel);
 
   report_encoder_speed();
   SmState = STATE_DC_MOTOR_MODE;
@@ -405,6 +409,8 @@ void setup() {
   pinMode(ledIndex, OUTPUT);
   pinMode(ledNegative, OUTPUT);
   pinMode(ledPowerOn, OUTPUT);
+
+  pixels.begin(); // INITIALIZE NeoPixel
 
   //setup limit switches
   pinMode(limitSwitchLower, INPUT_PULLUP);
@@ -552,6 +558,7 @@ void report_encoder(void)
   
  if (millis() % report_interval == 0){
       if (encoderPlain){
+        Serial.print("position = ");
         Serial.println(encoderPos);
       }
       else{
@@ -569,6 +576,7 @@ void report_encoder(void)
 void report_encoder_speed(void){
    if (millis() % report_interval == 0){
       if (encoderPlain){
+        Serial.print("ang vel = ");
         Serial.println(encoderAngVel);
       }
       else{
@@ -584,7 +592,6 @@ void report_encoder_speed(void){
 // Interrupt on A changing state
 //CURRENTLY ALWAYS DOING ENCODER INTERRUPTS IN ORDER TO GET DIRECTION
 void doEncoderA() {
-  
   A_set = digitalRead(encoderPinA) == HIGH;
   // and adjust counter + if A leads B
   encoderPosLast = encoderPos;
@@ -607,6 +614,8 @@ void doEncoderB() {
   //}
 }
 
+//ENCODER DIRECTION IS ONLY NECESSARY FOR CALCULATING ANG VEL, SO ONLY NEEDS TO BE CORRECT WHEN
+//INDEX PIN TRIGGERS. Error in direction on wrap is OK....?
 void doIndexPin(void){
   if(doInterruptIndex){
     //get direction of rotation
@@ -623,7 +632,11 @@ void doIndexPin(void){
     encoderAngVel = encoder_direction * 60000.0/(current_time_index - previous_time_index);    //rpm
 
     led_index_on = !led_index_on;
+    setIndexLEDs(led_index_on);
     digitalWrite(ledIndex, led_index_on);
+    if(encoder_direction / encoder_direction_last < 0){
+      setRotationLEDs(encoderAngVel);  
+    }
   }
   
 }
@@ -709,8 +722,90 @@ void setRotationLEDs(float value){
     digitalWrite(ledPositive, LOW);
     digitalWrite(ledNegative, LOW);
   }
+
+  //pixels.clear();   //clear all the led pixels
+  if(value > 0){
+    pixels.setPixelColor(7, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(15, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(23, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(31, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(39, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(47, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(55, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(63, pixels.Color(0, 150, 0));
+
+    pixels.setPixelColor(0, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(8, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(16, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(24, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(32, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(40, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(48, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(56, pixels.Color(0, 0, 0));
+    
+  } else if (value < 0){
+    pixels.setPixelColor(7, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(15, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(23, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(31, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(39, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(47, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(55, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(63, pixels.Color(0, 0, 0));
+    
+    pixels.setPixelColor(0, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(8, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(16, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(24, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(32, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(40, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(48, pixels.Color(0, 150, 0));
+//    pixels.setPixelColor(56, pixels.Color(0, 150, 0));
+
+  } 
+    pixels.show();
 }
 
+void setIndexLEDs(bool value){
+  //pixels.clear();
+
+  if(value){
+    pixels.setPixelColor(3, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(4, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(11, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(12, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(19, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(20, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(27, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(28, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(35, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(36, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(43, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(44, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(51, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(52, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(59, pixels.Color(0, 0, 150));
+//    pixels.setPixelColor(60, pixels.Color(0, 0, 150));
+  } else{
+    pixels.setPixelColor(3, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(4, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(11, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(12, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(19, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(20, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(27, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(28, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(35, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(36, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(43, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(44, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(51, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(52, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(59, pixels.Color(0, 0, 0));
+//    pixels.setPixelColor(60, pixels.Color(0, 0, 0));
+  }
+  pixels.show();
+}
 
 void doLimitLower(void){
   Serial.println("lower limit reached");
