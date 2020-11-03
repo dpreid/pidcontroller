@@ -192,14 +192,13 @@ StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
 
 void Sm_State_Stopped(void){
   //motor.brake();
-  //digitalWrite(SEN, HIGH);      //disable the stepper  
   enableStepper(false);   
   //doInterruptAB = false;
   doInterruptIndex = true;       
   lowerLimitReached = false;    //CHECK THIS
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
   set_speed = 0;
-
+  encoderAngVel = 0;
   //report_encoder_speed();
   report_encoder();
   SmState = STATE_STOPPED;
@@ -228,6 +227,8 @@ void Sm_State_Awaiting_Stop(void){
       else{
         Serial.print("{\"awaiting_stop\":true,\"enc\":");
         Serial.print(encoderPos);
+        Serial.print(",\"enc_ang_vel\":");
+        Serial.print(encoderAngVel);
         Serial.print(",\"sameCount\":");
         Serial.print(sameCount);
         Serial.print(",\"time\":");
@@ -271,15 +272,17 @@ void Sm_State_PID_Speed(void){
     doInterruptIndex = true;
     
 //limit the rotation speed for now!
-   if(PID_signal >=-speed_limit && PID_signal <= speed_limit){  
-      motor.drive(PID_signal); 
-   } else if(PID_signal > speed_limit){
-      motor.drive(speed_limit);
-   } else{
-      motor.drive(-speed_limit);
-   }
-
-  report_encoder_speed();
+//   if(PID_signal >=-speed_limit && PID_signal <= speed_limit){  
+//      motor.drive(PID_signal); 
+//   } else if(PID_signal > speed_limit){
+//      motor.drive(speed_limit);
+//   } else{
+//      motor.drive(-speed_limit);
+//   }
+    motor.drive(PID_signal);
+  
+  report_encoder();  
+  //report_encoder_speed();
   SmState = STATE_PID_SPEED_MODE;
 }
 
@@ -303,7 +306,7 @@ void Sm_State_Start_Calibration(void){
 
   encoderPos = 0;
 
-  //delay(100);
+  delay(100);
   
   report_encoder();
   if(encoderPos > 20 || encoderPos < -20){    //allowed calibration error
@@ -338,8 +341,8 @@ void Sm_State_DC_Motor(void){
   doInterruptIndex = true;
   
   //setRotationLEDs(encoderAngVel);
-
-  report_encoder_speed();
+  report_encoder();
+  //report_encoder_speed();
   SmState = STATE_DC_MOTOR_MODE;
 }
 
@@ -446,7 +449,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 
   //interruptsfor limit switches
-  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);   //do I want to run it once on falling or constantly when LOW?
+  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);
   //attachInterrupt(digitalPinToInterrupt(limitSwitchUpper), doLimitUpper, HIGH);   
 
   current_time_index = millis();   
@@ -578,10 +581,14 @@ void report_encoder(void)
       if (encoderPlain){
         Serial.print("position = ");
         Serial.println(encoderPos);
+        Serial.print("ang vel = ");
+        Serial.println(encoderAngVel);
       }
       else{
         Serial.print("{\"enc\":");
         Serial.print(encoderPos);
+        Serial.print(",\"enc_ang_vel\":");
+        Serial.print(encoderAngVel);
         Serial.print(",\"time\":");
         Serial.print(millis());  
         Serial.println("}");
