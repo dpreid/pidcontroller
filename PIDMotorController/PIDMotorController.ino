@@ -18,7 +18,7 @@
 #include "ArduinoJson-v6.9.1.h"
 
 //NeoPixel LED setup
-#define NEOPIXEL_PIN 10
+#define NEOPIXEL_PIN 14
 #define NUMPIXELS 64
 Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 // Pins on Motor Driver board.
@@ -27,28 +27,30 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define PWMA 6
 #define STBY 8
 //Pins for Stepper motor - governor control
-#define SIN1 7
-#define SIN2 19       //motors wired up incorrectly??
-#define SIN3 12
-#define SIN4 18
-
+//#define SIN1 7
+//#define SIN2 19       //motors wired up incorrectly??
+//#define SIN3 12
+//#define SIN4 18
+#define SDIR 9
+#define SSTP 12
+#define SEN 16
 
 #define encoderPinA 2     //these pins all have interrupts on them.
 #define encoderPinB 3
 #define indexPin 11
 
-//LED output pins
-#define ledPositive 14
-#define ledIndex 15
-#define ledNegative 16
-#define ledPowerOn 17
+//LED output pins         //SWAPPING THESE OUT FOR NEOPIXELS
+//#define ledPositive 14
+//#define ledIndex 15
+//#define ledNegative 16
+//#define ledPowerOn 17
 
-#define limitSwitchLower 13
-#define limitSwitchUpper 9
+#define limitSwitchLower 19
+#define limitSwitchUpper 21
 
 bool debug = false;
 unsigned long report_interval = 10;
-bool encoderPlain = true;
+bool encoderPlain = false;
 
 //for both PID modes and error calculations
 volatile int encoderPos = 0;
@@ -66,7 +68,7 @@ int set_position = 0;     //the position the user has set
 int set_speed = 0;        //user set position for PID_Speed mode and DC_Motor mode
 float Kp = 0.5;               //PID parameters
 float Ki = 0;
-float Kd = 0.1;
+float Kd = 0;
 
 //pid calculated values
 volatile int error = 0;
@@ -105,13 +107,14 @@ volatile float governor_pos = 0;
 volatile float set_governor_pos = 0;
 float max_governor_pos = 100;
 //int steps_in_one_rotation = 513;   //32 actual steps * 16.032 internal gearing PROTOTYPE MOTOR
-int steps_in_one_rotation = 2048;   //prototype motor 2
+int steps_in_one_rotation = 800;   //prototype motor 2
 float dist_one_rotation = 0.5;    //mm increase in height of lower governor position
 long stepper_speed = 100;
-Stepper stepper = Stepper(steps_in_one_rotation, SIN1, SIN2, SIN3, SIN4);
+//Stepper stepper = Stepper(steps_in_one_rotation, SIN1, SIN2, SIN3, SIN4);
+Stepper stepper = Stepper(steps_in_one_rotation, SDIR, SSTP);
 //======================================
 
-int speed_limit = 100;
+int speed_limit = 100;        //pin signal limit equivalent to approx 5V using 12V power supply.
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 
 int pid_interval = 3;       //ms, for timer interrupt
@@ -189,15 +192,16 @@ StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
 
 void Sm_State_Stopped(void){
   //motor.brake();
-
+  //digitalWrite(SEN, HIGH);      //disable the stepper  
+  enableStepper(false);   
   //doInterruptAB = false;
-  doInterruptIndex = true;       //testing as true
-
+  doInterruptIndex = true;       
+  lowerLimitReached = false;    //CHECK THIS
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
   set_speed = 0;
 
-  report_encoder_speed();
-  //report_encoder();
+  //report_encoder_speed();
+  report_encoder();
   SmState = STATE_STOPPED;
 }
 
@@ -222,7 +226,7 @@ void Sm_State_Awaiting_Stop(void){
         Serial.println(encoderPos);
       }
       else{
-        Serial.print("{\"cal\":true,\"enc\":");
+        Serial.print("{\"awaiting_stop\":true,\"enc\":");
         Serial.print(encoderPos);
         Serial.print(",\"sameCount\":");
         Serial.print(sameCount);
@@ -242,15 +246,17 @@ void Sm_State_PID_Position(void){
     //doInterruptAB = true;
     doInterruptIndex = false;
 
-//limit the rotation speed for now!
+//PID position doesn't need a speed limit
 
-   if(PID_signal >=-speed_limit && PID_signal <= speed_limit){  
-      motor.drive(PID_signal); 
-   } else if(PID_signal > speed_limit){
-      motor.drive(speed_limit);
-   } else{
-      motor.drive(-speed_limit);
-   }
+//   if(PID_signal >=-speed_limit && PID_signal <= speed_limit){  
+//      motor.drive(PID_signal); 
+//   } else if(PID_signal > speed_limit){
+//      motor.drive(speed_limit);
+//   } else{
+//      motor.drive(-speed_limit);
+//   }
+
+  motor.drive(PID_signal);
 
    //setRotationLEDs(PID_signal);
   
@@ -273,12 +279,11 @@ void Sm_State_PID_Speed(void){
       motor.drive(-speed_limit);
    }
 
-  //setRotationLEDs(PID_signal);    //should the LEDs reflect actual rotation or the PID signal?
   report_encoder_speed();
   SmState = STATE_PID_SPEED_MODE;
 }
 
-//Also needs to include calibrating the zero point of the governor.
+
 void Sm_State_Start_Calibration(void){
   
   //doInterruptAB = false;
@@ -287,38 +292,47 @@ void Sm_State_Start_Calibration(void){
   bool index_state = led_index_on;
 
   while(index_state == led_index_on){
-    motor.drive(-encoder_direction * 20);
+    motor.drive(-encoder_direction * 60);
   }
 
-  int t = millis();
-  while(millis() < t + 100){
-    motor.brake();  
-  }
-  
+//  int t = millis();
+//  while(millis() < t + 100){
+//    motor.brake();  
+//  }
+  motor.brake();
 
   encoderPos = 0;
 
-  delay(100);
+  //delay(100);
   
-  
-  if(encoderPos > 10 || encoderPos < -10){    //allowed calibration error
+  report_encoder();
+  if(encoderPos > 20 || encoderPos < -20){    //allowed calibration error
     SmState = STATE_CALIBRATE;  
   } else{
+    enableStepper(true);
     while(!lowerLimitReached){
-      stepper.setSpeed(10);
-      stepper.step(100);
-      delay(1000);
+      stepper.setSpeed(stepper_speed);
+      stepper.step(1);
+      //delay(100);
     }
-    stepper.setSpeed(10);
-    stepper.step(-100);
-    lowerLimitReached = false;
+//    stepper.setSpeed(stepper_speed);
+//    stepper.step(-100);
+    //lowerLimitReached = false;
     SmState = STATE_STOPPED;  
   }
   
 }
 
 void Sm_State_DC_Motor(void){
-  motor.drive(set_speed);
+  
+  if(set_speed <= speed_limit && set_speed >= -speed_limit){
+    motor.drive(set_speed);  
+  } else if(set_speed > speed_limit){
+    motor.drive(speed_limit);
+  } else{
+    motor.drive(-speed_limit);
+  }
+  
 
   //doInterruptAB = false;
   doInterruptIndex = true;
@@ -332,8 +346,9 @@ void Sm_State_DC_Motor(void){
 //User sets the governor position that they want. Stepper steps until that position is reached. Limit switch
 //can stop the motion.
 void Sm_State_Configure(void){
-
-  stepper.setSpeed(10);
+  enableStepper(true);
+  //digitalWrite(SEN, LOW);   //enable the stepper
+  stepper.setSpeed(stepper_speed);
   
   float diff = set_governor_pos - governor_pos;
   //float num_steps_to_take = getStepsFromDistance(diff);
@@ -344,18 +359,18 @@ void Sm_State_Configure(void){
   if(diff > 0){ 
     Serial.println("moving up");
     //stepper.step(num_steps_to_take);
-    stepper.step(1);
+    stepper.step(-1);
     governor_pos += dist_one_rotation / steps_in_one_rotation;
     
   } else if(diff < 0){
     Serial.println("moving down");
     //stepper.step(num_steps_to_take);
-    stepper.step(-1);
+    stepper.step(1);
     governor_pos -= dist_one_rotation / steps_in_one_rotation;
     
   } 
     //governor_pos = set_governor_pos;
-  if(diff <= 0.001 && diff >= -0.001) { //might need to include a configuration error allowance
+  if(diff <= 0.001 && diff >= -0.001) { //need to test this error allowance
     stepper.setSpeed(0);
     SmState = STATE_STOPPED;
   } else{
@@ -394,29 +409,34 @@ void setup() {
   pinMode(encoderPinA, INPUT_PULLUP);
   pinMode(encoderPinB, INPUT_PULLUP);
   pinMode(indexPin, INPUT_PULLUP);
+  pinMode(SEN, OUTPUT);
+  enableStepper(false);
+  //digitalWrite(SEN, HIGH);    //start stepper in disabled mode
+
+  
   //digitalWrite(encoderPinA, HIGH);  // turn on pull-up resistor....DONE ABOVE
   //digitalWrite(encoderPinB, HIGH);  // turn on pull-up resistor
   //digitalWrite(indexPin, HIGH);
 
   //setup stepper motor pins
-  pinMode(SIN1, OUTPUT);
-  pinMode(SIN2, OUTPUT);
-  pinMode(SIN3, OUTPUT);
-  pinMode(SIN4, OUTPUT);
+//  pinMode(SIN1, OUTPUT);
+//  pinMode(SIN2, OUTPUT);
+//  pinMode(SIN3, OUTPUT);
+//  pinMode(SIN4, OUTPUT);
   
   //setup led output pins
-  pinMode(ledPositive, OUTPUT);
-  pinMode(ledIndex, OUTPUT);
-  pinMode(ledNegative, OUTPUT);
-  pinMode(ledPowerOn, OUTPUT);
+//  pinMode(ledPositive, OUTPUT);
+//  pinMode(ledIndex, OUTPUT);
+//  pinMode(ledNegative, OUTPUT);
+//  pinMode(ledPowerOn, OUTPUT);
 
   pixels.begin(); // INITIALIZE NeoPixel
 
   //setup limit switches
   pinMode(limitSwitchLower, INPUT_PULLUP);
-  pinMode(limitSwitchUpper, INPUT_PULLUP);
+  //pinMode(limitSwitchUpper, INPUT_PULLUP);
   
-  digitalWrite(ledPowerOn, HIGH);   //just to show that arduino is on.
+  //digitalWrite(ledPowerOn, HIGH);   //just to show that arduino is on.
   
   // encoder pin on interrupt (pin 2)
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
@@ -426,8 +446,8 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 
   //interruptsfor limit switches
-  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, LOW);   //do I want to run it once on falling or constantly when LOW?
-  attachInterrupt(digitalPinToInterrupt(limitSwitchUpper), doLimitUpper, LOW);   
+  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);   //do I want to run it once on falling or constantly when LOW?
+  //attachInterrupt(digitalPinToInterrupt(limitSwitchUpper), doLimitUpper, HIGH);   
 
   current_time_index = millis();   
   previous_time_index = millis();
@@ -508,9 +528,7 @@ StateType readSerialJSON(StateType SmState){
         
         if(strcmp(new_mode, "STOP") == 0){
           SmState = STATE_AWAITING_STOP;          
-        } else {
-          Serial.println("Cannot change mode unless stopped first");
-        }
+        } 
         
       }
       
@@ -633,7 +651,7 @@ void doIndexPin(void){
 
     led_index_on = !led_index_on;
     setIndexLEDs(led_index_on);
-    digitalWrite(ledIndex, led_index_on);
+    //digitalWrite(ledIndex, led_index_on);
     if(encoder_direction / encoder_direction_last < 0){
       setRotationLEDs(encoderAngVel);  
     }
@@ -711,58 +729,69 @@ void calculateSpeedPID(){
 }
 
 
-void setRotationLEDs(float value){
+void setStepperLEDs(float value){
   if(value > 0){
-    digitalWrite(ledPositive, HIGH);
-    digitalWrite(ledNegative, LOW);
-  } else if(value < 0){
-    digitalWrite(ledPositive, LOW);
-    digitalWrite(ledNegative, HIGH);
-  } else{
-    digitalWrite(ledPositive, LOW);
-    digitalWrite(ledNegative, LOW);
-  }
-
-  //pixels.clear();   //clear all the led pixels
-  if(value > 0){
-    pixels.setPixelColor(7, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(15, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(23, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(31, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(39, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(47, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(55, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(63, pixels.Color(0, 150, 0));
-
+    pixels.setPixelColor(5, pixels.Color(0, 0, 150));
+    pixels.setPixelColor(6, pixels.Color(0, 0, 150));
+    pixels.setPixelColor(7, pixels.Color(0, 0, 150));
     pixels.setPixelColor(0, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(8, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(16, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(24, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(32, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(40, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(48, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(56, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(2, pixels.Color(0, 0, 0));
     
   } else if (value < 0){
+    pixels.setPixelColor(5, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(6, pixels.Color(0, 0, 0));
     pixels.setPixelColor(7, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(15, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(23, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(31, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(39, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(47, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(55, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(63, pixels.Color(0, 0, 0));
-    
-    pixels.setPixelColor(0, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(8, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(16, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(24, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(32, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(40, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(48, pixels.Color(0, 150, 0));
-//    pixels.setPixelColor(56, pixels.Color(0, 150, 0));
+    pixels.setPixelColor(0, pixels.Color(0, 0, 150));
+    pixels.setPixelColor(1, pixels.Color(0, 0, 150));
+    pixels.setPixelColor(2, pixels.Color(0, 0, 150));
+  } else{
+    pixels.setPixelColor(5, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(6, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(7, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(0, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(2, pixels.Color(0, 0, 0));
+  }
+    pixels.show();
+}
 
-  } 
+void setRotationLEDs(float value){
+//  if(value > 0){
+//    digitalWrite(ledPositive, HIGH);
+//    digitalWrite(ledNegative, LOW);
+//  } else if(value < 0){
+//    digitalWrite(ledPositive, LOW);
+//    digitalWrite(ledNegative, HIGH);
+//  } else{
+//    digitalWrite(ledPositive, LOW);
+//    digitalWrite(ledNegative, LOW);
+//  }
+
+  //pixels.clear();
+  if(value > 0){
+    pixels.setPixelColor(5, pixels.Color(0, 150, 0));
+    pixels.setPixelColor(6, pixels.Color(0, 150, 0));
+    pixels.setPixelColor(7, pixels.Color(0, 150, 0));
+    pixels.setPixelColor(0, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(2, pixels.Color(0, 0, 0));
+    
+  } else if (value < 0){
+    pixels.setPixelColor(5, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(6, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(7, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(0, pixels.Color(0, 150, 0));
+    pixels.setPixelColor(1, pixels.Color(0, 150, 0));
+    pixels.setPixelColor(2, pixels.Color(0, 150, 0));
+  } else{
+    pixels.setPixelColor(5, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(6, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(7, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(0, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(2, pixels.Color(0, 0, 0));
+  }
     pixels.show();
 }
 
@@ -771,51 +800,51 @@ void setIndexLEDs(bool value){
 
   if(value){
     pixels.setPixelColor(3, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(4, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(11, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(12, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(19, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(20, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(27, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(28, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(35, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(36, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(43, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(44, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(51, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(52, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(59, pixels.Color(0, 0, 150));
-//    pixels.setPixelColor(60, pixels.Color(0, 0, 150));
+    pixels.setPixelColor(4, pixels.Color(0, 0, 150));
   } else{
     pixels.setPixelColor(3, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(4, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(11, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(12, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(19, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(20, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(27, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(28, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(35, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(36, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(43, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(44, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(51, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(52, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(59, pixels.Color(0, 0, 0));
-//    pixels.setPixelColor(60, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(4, pixels.Color(0, 0, 0));
   }
   pixels.show();
 }
 
+void setStoppedLED(bool on){
+  if(on){
+    pixels.setPixelColor(8, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(9, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(10, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(11, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(12, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(13, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(14, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(15, pixels.Color(150, 0, 0));
+  } else{
+    pixels.setPixelColor(8, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(9, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(10, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(11, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(12, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(13, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(14, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(15, pixels.Color(0, 0, 0));
+  }
+
+  pixels.show();
+}
+
+//if limit switch hit then stepper should move up.
 void doLimitLower(void){
   Serial.println("lower limit reached");
-  lowerLimitReached = true;
-  stepper.setSpeed(0);    //stop the stepper from going any further
-  governor_pos = 0;       //this is our zero point
-  set_governor_pos = 0;
+    lowerLimitReached = true;
+    //digitalWrite(SEN, LOW);   //enable stepper
+    enableStepper(true);
+    stepper.setSpeed(stepper_speed);    
+    stepper.step(-800);
+    governor_pos = 0;       //this is our zero point
+    set_governor_pos = 0;
+//
+    SmState = STATE_STOPPED;
 
-  SmState = STATE_STOPPED;
-  
 }
 
 void doLimitUpper(void){
@@ -829,6 +858,14 @@ float getStepsFromDistance(float dist_mm){
   float total_steps = num_full_turns*steps_in_one_rotation;
 
   return total_steps;
+}
+
+void enableStepper(bool on){
+  if(on){
+    digitalWrite(SEN, LOW);
+  } else{
+    digitalWrite(SEN, HIGH);
+  }
 }
 
 //==================================================================================
