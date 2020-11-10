@@ -35,8 +35,8 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define SSTP 12
 #define SEN 16
 
-#define encoderPinA 2     //these pins all have interrupts on them.
-#define encoderPinB 3
+#define encoderPinA 3     //these pins all have interrupts on them.
+#define encoderPinB 2
 #define indexPin 11
 
 //LED output pins         //SWAPPING THESE OUT FOR NEOPIXELS
@@ -49,7 +49,8 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define limitSwitchUpper 21
 
 bool debug = false;
-unsigned long report_interval = 10;
+unsigned long report_interval = 10;   //ms
+unsigned long previous_report_time = 0;
 bool encoderPlain = false;
 
 //for both PID modes and error calculations
@@ -58,10 +59,13 @@ volatile int encoderPosLast = 0;
 volatile float encoderAngVel = 0;
 //volatile float encoderAngVelLast = 0;
 volatile int encoder_direction = 1;     //+1 CCW, -1 CW.
-volatile int encoder_direction_last = 1;
+volatile int encoder_direction_last = -1;
 
+unsigned long current_time_encoder = 0;
+unsigned long previous_time_encoder = 0;
 unsigned long current_time_index = 0;
 unsigned long previous_time_index = 0;
+unsigned long min_rotation_time = 6;      //any time difference smaller than 6ms won't be used to calculate angular velocity
 
 //other user set values
 int set_position = 0;     //the position the user has set
@@ -105,10 +109,10 @@ MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 //stepper variables====================
 volatile float governor_pos = 0;
 volatile float set_governor_pos = 0;
-float max_governor_pos = 100;
+float max_governor_pos = 30;          //the max increase in height of the governor
 //int steps_in_one_rotation = 513;   //32 actual steps * 16.032 internal gearing PROTOTYPE MOTOR
-int steps_in_one_rotation = 800;   //prototype motor 2
-float dist_one_rotation = 0.5;    //mm increase in height of lower governor position
+int steps_in_one_rotation = 800;   //prototype motor 2 - this should be 200? I have no microstepping set.
+float dist_one_rotation = 1.0;    //mm increase in height of lower governor position
 long stepper_speed = 100;
 //Stepper stepper = Stepper(steps_in_one_rotation, SIN1, SIN2, SIN3, SIN4);
 Stepper stepper = Stepper(steps_in_one_rotation, SDIR, SSTP);
@@ -128,7 +132,7 @@ bool lowerLimitReached = false;
 
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
-float timer_interrupt_freq = 1000/pid_interval;   //200Hz once every 5ms
+float timer_interrupt_freq = 1000/pid_interval;   
 /**
  * Defines the valid states for the state machine
  * 
@@ -295,7 +299,7 @@ void Sm_State_Start_Calibration(void){
   bool index_state = led_index_on;
 
   while(index_state == led_index_on){
-    motor.drive(-encoder_direction * 60);
+    motor.drive(-encoder_direction * 50);
   }
 
 //  int t = millis();
@@ -309,7 +313,7 @@ void Sm_State_Start_Calibration(void){
   delay(100);
   
   report_encoder();
-  if(encoderPos > 20 || encoderPos < -20){    //allowed calibration error
+  if(encoderPos > 30 || encoderPos < -30){    //allowed calibration error
     SmState = STATE_CALIBRATE;  
   } else{
     enableStepper(true);
@@ -355,18 +359,15 @@ void Sm_State_Configure(void){
   
   float diff = set_governor_pos - governor_pos;
   //float num_steps_to_take = getStepsFromDistance(diff);
-
-  Serial.print("gov pos = ");
-  Serial.println(governor_pos);
   
   if(diff > 0){ 
-    Serial.println("moving up");
+    //moving up
     //stepper.step(num_steps_to_take);
     stepper.step(-1);
     governor_pos += dist_one_rotation / steps_in_one_rotation;
     
   } else if(diff < 0){
-    Serial.println("moving down");
+    //moving down
     //stepper.step(num_steps_to_take);
     stepper.step(1);
     governor_pos -= dist_one_rotation / steps_in_one_rotation;
@@ -455,6 +456,8 @@ void setup() {
   current_time_index = millis();   
   previous_time_index = millis();
 
+  previous_report_time = millis();
+
   Serial.setTimeout(50);
   Serial.begin(57600);
 
@@ -520,7 +523,6 @@ StateType readSerialJSON(StateType SmState){
           SmState = STATE_DC_MOTOR_MODE;
         }
         else if(strcmp(new_mode, "CONFIGURE") == 0){
-          Serial.println("Entering configuration state");
           SmState = STATE_CONFIGURE;
         }
         else if(strcmp(new_mode, "CALIBRATE") == 0){
@@ -552,6 +554,8 @@ StateType readSerialJSON(StateType SmState){
 
       if(!doc["dt"].isNull()){
         pid_interval = doc["dt"];
+        float timer_interrupt_freq = 1000/pid_interval;  
+        setTimerFrequency(timer_interrupt_freq);        
       }
 
       if(!doc["N_errors"].isNull()){
@@ -560,7 +564,6 @@ StateType readSerialJSON(StateType SmState){
     } else if(strcmp(cmd, "set_height") == 0){
       float new_pos = doc["param"];
       if(new_pos <= max_governor_pos && new_pos >= 0){
-        Serial.println("new governor position set");
         set_governor_pos = new_pos;
       }
     }
@@ -573,11 +576,11 @@ StateType readSerialJSON(StateType SmState){
 
 
 
-//outputs encoder position to serial bus.
+//outputs encoder position and ang vel to serial bus.
 void report_encoder(void)
 {
   
- if (millis() % report_interval == 0){
+ if (millis() >= previous_report_time + report_interval){
       if (encoderPlain){
         Serial.print("position = ");
         Serial.println(encoderPos);
@@ -593,13 +596,15 @@ void report_encoder(void)
         Serial.print(millis());  
         Serial.println("}");
       }
+
+      previous_report_time = millis();
     }
   
 }
 
 //outputs encoder speed to serial bus.
 void report_encoder_speed(void){
-   if (millis() % report_interval == 0){
+   if (millis() >= previous_report_time + report_interval){
       if (encoderPlain){
         Serial.print("ang vel = ");
         Serial.println(encoderAngVel);
@@ -611,6 +616,8 @@ void report_encoder_speed(void){
         Serial.print(millis());  
         Serial.println("}");
       }
+
+      previous_report_time = millis();
     }
 }
 
@@ -622,6 +629,20 @@ void doEncoderA() {
   encoderPosLast = encoderPos;
   encoderPos += (A_set != B_set) ? +1 : -1;
   encoderWrap();
+
+
+  //TESTING UPDATING THE ANGULAR VELOCITY ON ENCODER INTERRUPT AS WELL
+//  if(A_set){
+//    current_time_encoder = micros();
+//    if(current_time_encoder > previous_time_encoder){
+//      encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
+//      previous_time_encoder = current_time_encoder;
+//  } 
+//
+//  }
+
+  
+
   
 }
 
@@ -635,7 +656,7 @@ void doEncoderB() {
   encoderPos += (A_set == B_set) ? +1 : -1;
   encoderWrap();
 
- 
+  
   //}
 }
 
@@ -644,7 +665,7 @@ void doEncoderB() {
 void doIndexPin(void){
   if(doInterruptIndex){
     //get direction of rotation
-    encoder_direction_last = encoder_direction;
+    
     if(encoderPos - encoderPosLast >= 0){
       encoder_direction = -1;
     } else{
@@ -653,8 +674,11 @@ void doIndexPin(void){
   
     previous_time_index = current_time_index;
     current_time_index = millis();
-  
-    encoderAngVel = encoder_direction * 60000.0/(current_time_index - previous_time_index);    //rpm
+
+    if(current_time_index >= previous_time_index + min_rotation_time){
+      encoderAngVel = encoder_direction * 60000.0/(current_time_index - previous_time_index);    //rpm
+    }
+    
 
     led_index_on = !led_index_on;
     setIndexLEDs(led_index_on);
@@ -662,6 +686,8 @@ void doIndexPin(void){
     if(encoder_direction / encoder_direction_last < 0){
       setRotationLEDs(encoderAngVel);  
     }
+
+    encoder_direction_last = encoder_direction;
   }
   
 }
@@ -841,7 +867,6 @@ void setStoppedLED(bool on){
 
 //if limit switch hit then stepper should move up.
 void doLimitLower(void){
-  Serial.println("lower limit reached");
     lowerLimitReached = true;
     //digitalWrite(SEN, LOW);   //enable stepper
     enableStepper(true);
