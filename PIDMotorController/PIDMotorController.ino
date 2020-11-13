@@ -297,9 +297,10 @@ void Sm_State_Start_Calibration(void){
   doInterruptIndex = true;
 
   bool index_state = led_index_on;
-
+  float starting_signal = 50;
   while(index_state == led_index_on){
-    motor.drive(-encoder_direction * 50);
+    motor.drive(-encoder_direction * starting_signal);
+    starting_signal += 0.000001;
   }
 
 //  int t = millis();
