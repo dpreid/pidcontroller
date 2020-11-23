@@ -23,17 +23,24 @@
 Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 // Pins on Motor Driver board.
 #define AIN1 5
-#define AIN2 4
+//#define AIN2 4
 #define PWMA 6
-#define STBY 8
+//#define STBY 8
 //Pins for Stepper motor - governor control
 //#define SIN1 7
 //#define SIN2 19       //motors wired up incorrectly??
 //#define SIN3 12
 //#define SIN4 18
-#define SDIR 9
-#define SSTP 12
+#define SDIR 4
+#define SSTP 7
 #define SEN 16
+#define SM0 20
+#define SM1 12
+#define SM2 10
+#define SRST 9
+#define SSLP 8
+#define SFLT 15
+ 
 
 #define encoderPinA 3     //these pins all have interrupts on them.
 #define encoderPinB 2
@@ -320,11 +327,11 @@ void Sm_State_Start_Calibration(void){
     enableStepper(true);
     while(!lowerLimitReached){
       stepper.setSpeed(stepper_speed);
-      stepper.step(1);
+      stepper.step(-1);
       //delay(100);
     }
 //    stepper.setSpeed(stepper_speed);
-//    stepper.step(-100);
+//    stepper.step(100);
     //lowerLimitReached = false;
     SmState = STATE_STOPPED;  
   }
@@ -364,13 +371,13 @@ void Sm_State_Configure(void){
   if(diff > 0){ 
     //moving up
     //stepper.step(num_steps_to_take);
-    stepper.step(-1);
+    stepper.step(1);
     governor_pos += dist_one_rotation / steps_in_one_rotation;
     
   } else if(diff < 0){
     //moving down
     //stepper.step(num_steps_to_take);
-    stepper.step(1);
+    stepper.step(-1);
     governor_pos -= dist_one_rotation / steps_in_one_rotation;
     
   } 
@@ -416,6 +423,22 @@ void setup() {
   pinMode(indexPin, INPUT_PULLUP);
   pinMode(SEN, OUTPUT);
   enableStepper(false);
+
+  //set pins for stepper driver
+  pinMode(SM0, OUTPUT);
+  pinMode(SM1, OUTPUT);
+  pinMode(SM2, OUTPUT);
+  pinMode(SRST, OUTPUT);
+  pinMode(SSLP, OUTPUT);
+  //pinMode(SFLT, INPUT_PULLUP);
+  digitalWrite(SM0, LOW);
+  digitalWrite(SM1, LOW);
+  digitalWrite(SM1, LOW);
+  digitalWrite(SRST, HIGH);   //needs to be HIGH to enable driver
+  digitalWrite(SSLP, HIGH);   //needs to be HIGH to enable driver
+  
+
+  
   //digitalWrite(SEN, HIGH);    //start stepper in disabled mode
 
   
@@ -533,7 +556,8 @@ StateType readSerialJSON(StateType SmState){
       } else {
         
         if(strcmp(new_mode, "STOP") == 0){
-          SmState = STATE_AWAITING_STOP;          
+          SmState = STATE_AWAITING_STOP;      
+          clearPIDQueues();                 //ensure the PID integral term is cleared for next run
         } 
         
       }
@@ -762,6 +786,16 @@ void calculateSpeedPID(){
     PID_signal = proportional_term + integral_term + derivative_term;
 }
 
+void clearPIDQueues(void){
+  while(!errors_queue.isEmpty()){
+    errors_queue.pop();
+  }
+
+  while(!errors_speed_queue.isEmpty()){
+    errors_speed_queue.pop();
+  }  
+}
+
 
 void setStepperLEDs(float value){
   if(value > 0){
@@ -872,7 +906,7 @@ void doLimitLower(void){
     //digitalWrite(SEN, LOW);   //enable stepper
     enableStepper(true);
     stepper.setSpeed(stepper_speed);    
-    stepper.step(-800);
+    stepper.step(800);
     governor_pos = 0;       //this is our zero point
     set_governor_pos = 0;
 //
