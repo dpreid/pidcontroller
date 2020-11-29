@@ -52,8 +52,8 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 //#define ledNegative 16
 //#define ledPowerOn 17
 
-#define limitSwitchLower 19
-#define limitSwitchUpper 21
+#define limitSwitchLower 21
+#define limitSwitchUpper 19
 
 bool debug = false;
 unsigned long report_interval = 10;   //ms
@@ -75,23 +75,27 @@ unsigned long previous_time_index = 0;
 unsigned long min_rotation_time = 6;      //any time difference smaller than 6ms won't be used to calculate angular velocity
 
 //other user set values
-int set_position = 0;     //the position the user has set
-int set_speed = 0;        //user set position for PID_Speed mode and DC_Motor mode
-float Kp = 0.5;               //PID parameters
-float Ki = 0;
-float Kd = 0;
+float set_position = 0;     //the position the user has set
+float set_speed = 0;        //user set position for PID_Speed mode and DC_Motor mode
+float Kp = 0.1;               //PID parameters
+float Ki = 0.0;
+float Kd = 0.0;
 
 //pid calculated values
-volatile int error = 0;
-volatile int previous_error = 0;
+volatile float error = 0;
+volatile float previous_error = 0;
+volatile float previous_previous_error = 0;
 volatile float error_speed = 0;
 volatile float previous_error_speed = 0;
+volatile float previous_previous_error_speed = 0;
 float previous_errors[10];
 volatile float proportional_term = 0;
 volatile float integral_term = 0;
 volatile float error_sum = 0;
 volatile float derivative_term = 0;
 volatile float PID_signal = 0;
+volatile float previous_PID_signal = 0;
+volatile float previous_previous_PID_signal = 0;
 
 QueueArray <float> errors_queue;    //queue of previous errors 
 QueueArray <float> errors_speed_queue;
@@ -101,7 +105,7 @@ boolean A_set = false;
 boolean B_set = false;
 
 //JSON serialization
-#define COMMAND_SIZE 64
+#define COMMAND_SIZE 64  //originally 64
 StaticJsonDocument<COMMAND_SIZE> doc;
 char command[COMMAND_SIZE];
 
@@ -127,6 +131,7 @@ Stepper stepper = Stepper(steps_in_one_rotation, SDIR, SSTP);
 
 int speed_limit = 100;        //pin signal limit equivalent to approx 5V using 12V power supply.
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
+float zero_error = 10;
 
 int pid_interval = 3;       //ms, for timer interrupt
 
@@ -139,14 +144,21 @@ bool lowerLimitReached = false;
 
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
-float timer_interrupt_freq = 1000/pid_interval;   
+float timer_interrupt_freq = 1000.0/pid_interval;   
+
+//ADD A FRICTION COMPENSATION MODEL - COULOMB FRICTION, CONSTANT FRICTION IN EACH DIRECTION
+//SHOULD BE BASED ON THE ACTUAL DIRECTION THE MOTOR IS ROTATING - SIGNAL SIGN AND DIRECTION ARE NOT NECESSARILY THE SAME
+float positive_friction = 255*0.25/12;  //additional signal that should be sent to motor to overcome friction
+float negative_friction = -255*0.5/12;
+
 /**
  * Defines the valid states for the state machine
  * 
  */
 typedef enum
 {
-  STATE_CALIBRATE,      //state for resetting the encoder 0 position to the index point
+  STATE_CALIBRATE,      //state for resetting the governor to zero angle and zero height
+  STATE_ZERO,           //zeroes the angle without changing governor height
   STATE_AWAITING_STOP,  //checking if the motor has stopped
   STATE_STOPPED,        //no drive to motor
   STATE_PID_SPEED_MODE, //pid controller mode - 1st order, speed functions
@@ -158,6 +170,7 @@ typedef enum
 //state Machine function prototypes
 //these are the functions that run whilst in each respective state.
 void Sm_State_Start_Calibration(void);
+void Sm_State_Zero(void);
 void Sm_State_Awaiting_Stop(void);
 void Sm_State_Stopped(void);
 void Sm_State_PID_Speed(void);
@@ -182,6 +195,7 @@ typedef struct
 StateMachineType StateMachine[] =
 {
   {STATE_CALIBRATE, Sm_State_Start_Calibration},
+  {STATE_ZERO, Sm_State_Zero},
   {STATE_AWAITING_STOP, Sm_State_Awaiting_Stop},
   {STATE_STOPPED, Sm_State_Stopped},
   {STATE_PID_SPEED_MODE, Sm_State_PID_Speed},
@@ -190,7 +204,7 @@ StateMachineType StateMachine[] =
   {STATE_CONFIGURE, Sm_State_Configure}
 };
  
-int NUM_STATES = 7;
+int NUM_STATES = 8;
 
 /**
  * Stores the current state of the state machine
@@ -256,7 +270,7 @@ void Sm_State_Awaiting_Stop(void){
 
 void Sm_State_PID_Position(void){
     //doInterruptAB = true;
-    doInterruptIndex = false;
+    doInterruptIndex = true;
 
 //PID position doesn't need a speed limit
 
@@ -268,7 +282,19 @@ void Sm_State_PID_Position(void){
 //      motor.drive(-speed_limit);
 //   }
 
-  motor.drive(PID_signal);
+//drive at PID signal unless the signal is greater than the max/less than min.
+    //Serial.println(PID_signal);
+//    Serial.print("Kp = ");
+//    Serial.println(Kp);
+
+    if(PID_signal > 255){
+      motor.drive(255);
+    } else if(PID_signal < -255){
+      motor.drive(-255);
+    } else{
+      motor.drive(PID_signal);
+    }
+  
 
    //setRotationLEDs(PID_signal);
   
@@ -290,7 +316,13 @@ void Sm_State_PID_Speed(void){
 //   } else{
 //      motor.drive(-speed_limit);
 //   }
-    motor.drive(PID_signal);
+    if(PID_signal > 255){
+      motor.drive(255);
+    } else if(PID_signal < -255){
+      motor.drive(-255);
+    } else{
+      motor.drive(PID_signal);
+    }
   
   report_encoder();  
   //report_encoder_speed();
@@ -321,7 +353,7 @@ void Sm_State_Start_Calibration(void){
   delay(100);
   
   report_encoder();
-  if(encoderPos > 30 || encoderPos < -30){    //allowed calibration error
+  if(encoderPos > zero_error || encoderPos < -zero_error){    //allowed calibration error
     SmState = STATE_CALIBRATE;  
   } else{
     enableStepper(true);
@@ -338,16 +370,42 @@ void Sm_State_Start_Calibration(void){
   
 }
 
-void Sm_State_DC_Motor(void){
+void Sm_State_Zero(void){
   
-  if(set_speed <= speed_limit && set_speed >= -speed_limit){
-    motor.drive(set_speed);  
-  } else if(set_speed > speed_limit){
-    motor.drive(speed_limit);
+  //doInterruptAB = false;
+  doInterruptIndex = true;
+
+  bool index_state = led_index_on;
+  float starting_signal = 50;
+  while(index_state == led_index_on){
+    motor.drive(-encoder_direction * starting_signal);
+    starting_signal += 0.000001;
+  }
+  motor.brake();
+
+  encoderPos = 0;
+
+  delay(100);
+  
+  report_encoder();
+  if(encoderPos > zero_error || encoderPos < -zero_error){    //allowed calibration error
+    SmState = STATE_ZERO;  
   } else{
-    motor.drive(-speed_limit);
+    SmState = STATE_STOPPED;  
   }
   
+}
+
+void Sm_State_DC_Motor(void){
+  
+//  if(set_speed <= speed_limit && set_speed >= -speed_limit){
+//    motor.drive(set_speed);  
+//  } else if(set_speed > speed_limit){
+//    motor.drive(speed_limit);
+//  } else{
+//    motor.drive(-speed_limit);
+//  }
+  motor.drive(set_speed);
 
   //doInterruptAB = false;
   doInterruptIndex = true;
@@ -418,9 +476,15 @@ void TimerInterrupt(void){
 // SETUP AND LOOP==================================================================================
 void setup() {
   //setup encoder pins
-  pinMode(encoderPinA, INPUT_PULLUP);
-  pinMode(encoderPinB, INPUT_PULLUP);
-  pinMode(indexPin, INPUT_PULLUP);
+//  pinMode(encoderPinA, INPUT_PULLUP);   //pullup resistors on board
+//  pinMode(encoderPinB, INPUT_PULLUP);
+//  pinMode(indexPin, INPUT_PULLUP);
+
+  pinMode(encoderPinA, INPUT);
+  pinMode(encoderPinB, INPUT);
+  pinMode(indexPin, INPUT);
+
+  
   pinMode(SEN, OUTPUT);
   enableStepper(false);
 
@@ -483,7 +547,7 @@ void setup() {
   previous_report_time = millis();
 
   Serial.setTimeout(50);
-  Serial.begin(57600);
+  Serial.begin(115200);
 
   startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
@@ -503,19 +567,21 @@ StateType readSerialJSON(StateType SmState){
   
     Serial.readBytesUntil(10, command, COMMAND_SIZE);
     deserializeJson(doc, command);
-
-    const char* cmd = doc["cmd"];
     
+    const char* cmd = doc["cmd"];
+
     if(strcmp(cmd, "set_position")==0){
       if(SmState == STATE_PID_POSITION_MODE){
-        int new_position = doc["param"];
+        float new_position = doc["param"];
         if(new_position >= -position_limit && new_position <= position_limit){
+          resetPIDSignal();
+          
           set_position = new_position;
         } else{
-          Serial.print("position needs to be between -");
-          Serial.print(position_limit);
-          Serial.print(" and ");
-          Serial.println(position_limit);
+//          Serial.print("position needs to be between -");
+//          Serial.print(position_limit);
+//          Serial.print(" and ");
+//          Serial.println(position_limit);
         }
       } else{
           Serial.println("In wrong state to set position");
@@ -524,7 +590,10 @@ StateType readSerialJSON(StateType SmState){
       
   } else if(strcmp(cmd, "set_speed")==0){
       if(SmState == STATE_PID_SPEED_MODE || SmState == STATE_DC_MOTOR_MODE){
-        int new_speed = doc["param"];
+        float new_speed = doc["param"];
+        
+        resetPIDSignal();
+        
         set_speed = new_speed;
       } else{
         Serial.println("In wrong state to set speed");
@@ -552,18 +621,24 @@ StateType readSerialJSON(StateType SmState){
         else if(strcmp(new_mode, "CALIBRATE") == 0){
           SmState = STATE_CALIBRATE;
         }
+        else if(strcmp(new_mode, "ZERO") == 0){
+          SmState = STATE_ZERO;
+        }
         
       } else {
         
         if(strcmp(new_mode, "STOP") == 0){
           SmState = STATE_AWAITING_STOP;      
-          clearPIDQueues();                 //ensure the PID integral term is cleared for next run
+          //clearPIDQueues();                 //ensure the PID integral term is cleared for next run
+          resetPIDSignal();
         } 
         
       }
       
    
     } else if(strcmp(cmd, "set_parameters")==0){
+
+      resetPIDSignal();
 
       if(!doc["Kp"].isNull()){
         Kp = doc["Kp"];
@@ -586,7 +661,8 @@ StateType readSerialJSON(StateType SmState){
       if(!doc["N_errors"].isNull()){
         numErrors = doc["N_errors"];
       }
-    } else if(strcmp(cmd, "set_height") == 0){
+    } 
+    else if(strcmp(cmd, "set_height") == 0){
       float new_pos = doc["param"];
       if(new_pos <= max_governor_pos && new_pos >= 0){
         set_governor_pos = new_pos;
@@ -598,7 +674,19 @@ StateType readSerialJSON(StateType SmState){
  } 
 
 
+void resetPIDSignal(void){
+  PID_signal = 0;
+  previous_PID_signal = 0;
+  previous_previous_PID_signal = 0;
+  error = 0;
+  previous_error = 0;
+  previous_previous_error = 0;
 
+  error_speed = 0;
+  previous_error_speed = 0;
+  previous_previous_error_speed = 0;
+  
+}
 
 
 //outputs encoder position and ang vel to serial bus.
@@ -648,27 +736,33 @@ void report_encoder_speed(void){
 
 // Interrupt on A changing state
 //CURRENTLY ALWAYS DOING ENCODER INTERRUPTS IN ORDER TO GET DIRECTION
+//Encoder A is used to calculate angular speed in rpm as well as new position
 void doEncoderA() {
   A_set = digitalRead(encoderPinA) == HIGH;
   // and adjust counter + if A leads B
   encoderPosLast = encoderPos;
   encoderPos += (A_set != B_set) ? +1 : -1;
+
+
+  if(encoderPos - encoderPosLast >= 0){
+      encoder_direction = -1;
+    } else{
+      encoder_direction = 1;
+    }
+
+  //TESTING UPDATING THE ANGULAR VELOCITY ON ENCODER INTERRUPT AS WELL
+  if(A_set){
+    current_time_encoder = micros();
+    if(current_time_encoder > previous_time_encoder){
+      encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
+      previous_time_encoder = current_time_encoder;
+      } 
+
+  }
+
   encoderWrap();
 
 
-  //TESTING UPDATING THE ANGULAR VELOCITY ON ENCODER INTERRUPT AS WELL
-//  if(A_set){
-//    current_time_encoder = micros();
-//    if(current_time_encoder > previous_time_encoder){
-//      encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
-//      previous_time_encoder = current_time_encoder;
-//  } 
-//
-//  }
-
-  
-
-  
 }
 
 // Interrupt on B changing state
@@ -691,18 +785,18 @@ void doIndexPin(void){
   if(doInterruptIndex){
     //get direction of rotation
     
-    if(encoderPos - encoderPosLast >= 0){
-      encoder_direction = -1;
-    } else{
-      encoder_direction = 1;
-    }
+//    if(encoderPos - encoderPosLast >= 0){
+//      encoder_direction = -1;
+//    } else{
+//      encoder_direction = 1;
+//    }
   
-    previous_time_index = current_time_index;
-    current_time_index = millis();
-
-    if(current_time_index >= previous_time_index + min_rotation_time){
-      encoderAngVel = encoder_direction * 60000.0/(current_time_index - previous_time_index);    //rpm
-    }
+//    previous_time_index = current_time_index;
+//    current_time_index = millis();
+//
+//    if(current_time_index >= previous_time_index + min_rotation_time){
+//      encoderAngVel = encoder_direction * 60000.0/(current_time_index - previous_time_index);    //rpm
+//    }
     
 
     led_index_on = !led_index_on;
@@ -725,66 +819,241 @@ void encoderWrap(void){
       }
 }
 
-void calculatePositionPID(){
-  previous_error = error;
-  int not_through_wrap_error = encoderPos - set_position;
-  int mag = abs(not_through_wrap_error);
+//void calculatePositionPID(void){
+//  previous_error = error;
+//  int not_through_wrap_error = encoderPos - set_position;
+//  int mag = abs(not_through_wrap_error);
+//  int dir = not_through_wrap_error / mag;    //should be +1 or -1.
+//  
+//  int through_wrap_error = position_limit - abs(encoderPos) + position_limit - abs(set_position);
+//
+//  if(abs(not_through_wrap_error) <= through_wrap_error){
+//    error = not_through_wrap_error;
+//  } else {
+//    error = -1*dir*through_wrap_error;
+//  }
+//  //convert error to an angular error in deg
+//  error = error*180/position_limit;
+//  
+//  
+//  //unsigned long delta_t = 2*(current_time - previous_time);
+//  int delta_t = pid_interval;
+// 
+//  proportional_term = error * Kp;
+//
+//  if(Kd > 0){
+//     derivative_term = 1000*(error - previous_error)*Kd / delta_t; 
+//  } else{
+//    derivative_term = 0;
+//  }
+//  
+//
+//  if(Ki > 0){
+//    if(errors_queue.count() <= numErrors){
+//      errors_queue.push(error*delta_t/1000);
+//      error_sum += (error*delta_t/1000);
+//    } else{
+//      float e = errors_queue.pop();
+//      error_sum -= e;
+//      errors_queue.push(error*delta_t/1000);
+//      error_sum += (error*delta_t/1000);
+//    }
+//    integral_term = error_sum * Ki;
+//  } else {
+//    integral_term = 0;
+//  }
+//    
+//
+//    PID_signal = proportional_term + integral_term + derivative_term;
+//    
+//    if(encoderPos - encoderPosLast > 0){
+//      PID_signal += negative_friction;
+//    } else if(encoderPos - encoderPosLast < 0){
+//      PID_signal += positive_friction;
+//    } 
+//}
+
+//void calculatePositionPID(void){
+//    previous_error = error;
+//  float not_through_wrap_error = encoderPos - set_position;
+//  float mag = abs(not_through_wrap_error);
+//  int dir = not_through_wrap_error / mag;    //should be +1 or -1.
+//  
+//  float through_wrap_error = 2*position_limit - abs(encoderPos) - abs(set_position);
+//
+//  if(abs(not_through_wrap_error) <= through_wrap_error){
+//    error = not_through_wrap_error;
+//  } else {
+//    error = -1*dir*through_wrap_error;
+//  }
+//  //convert error to an angular error in deg
+//  error = error*180.0/position_limit;
+//  
+//  
+//  //unsigned long delta_t = 2*(current_time - previous_time);
+//  float delta_t = pid_interval/1000.0;
+// 
+//  proportional_term = error * Kp;
+//
+//  if(Kd > 0){
+//     derivative_term = (error - previous_error)*Kd / delta_t; 
+//  } else{
+//    derivative_term = 0;
+//  }
+//  
+//
+//  if(Ki > 0){
+//    error_sum += (error*delta_t);
+//    integral_term = error_sum * Ki;
+//  } else {
+//    error_sum = 0;
+//    integral_term = 0;
+//  }
+//    
+//
+//    PID_signal = proportional_term + integral_term + derivative_term;
+//    
+////    if(encoderPos - encoderPosLast > 0){
+////      PID_signal += negative_friction;
+////    } else if(encoderPos - encoderPosLast < 0){
+////      PID_signal += positive_friction;
+////    } 
+//    
+//
+//}
+
+//DISCRETE TIME VERSION
+void calculatePositionPID(void){
+    previous_previous_error = previous_error;
+    previous_error = error;
+    
+  float not_through_wrap_error = encoderPos - set_position;
+  float mag = abs(not_through_wrap_error);
   int dir = not_through_wrap_error / mag;    //should be +1 or -1.
   
-  int through_wrap_error = position_limit - abs(encoderPos) + position_limit - abs(set_position);
+  float through_wrap_error = 2*position_limit - abs(encoderPos) - abs(set_position);
 
   if(abs(not_through_wrap_error) <= through_wrap_error){
     error = not_through_wrap_error;
   } else {
     error = -1*dir*through_wrap_error;
   }
-  //error = encoderPos - set_position;
+  //convert error to an angular error in deg
+  error = error*180/position_limit;
   
-  //unsigned long delta_t = 2*(current_time - previous_time);
-  int delta_t = pid_interval;
   
-  proportional_term = error * Kp;
-  derivative_term = (error - previous_error)*Kd / delta_t; 
+  float delta_t = pid_interval/1000.0;
+  float Ti = Kp/Ki;
+  float Td = Kd/Kp;
+  
+ float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error - 2*previous_error + previous_previous_error));
 
-    if(errors_queue.count() <= numErrors){
-      errors_queue.push(error);
-      error_sum += error;
-    } else{
-      float e = errors_queue.pop();
-      error_sum -= e;
-      errors_queue.push(error);
-      error_sum += error;
-    }
-    integral_term = error_sum * Ki;
+  PID_signal += new_signal;
+    
 
-    PID_signal = proportional_term + integral_term + derivative_term;
+}
+
+//DISCRETE TIME VERSION 2
+//void calculatePositionPID(void){
+//  float Ts = pid_interval/1000.0;
+//  int N = 20;   //filter
+//  float a0 = (1+N*Ts);
+//  float a1 = -(2+N*Ts);
+//  float a2 = 1.0;
+//  float b0 = Kp*(1+N*Ts) + Ki*Ts*(1+N*Ts) + Kd*N;
+//  float b1 = -(Kp*(2+N*Ts) + Ki*Ts + 2*Kd*N);
+//  float b2 = Kp + Kd*N;
+//
+//  float ku1 = a1/a0; 
+//  float ku2 = a2/a0; 
+//  float ke0 = b0/a0; 
+//  float ke1 = b1/a0; 
+//  float ke2 = b2/a0;
+//
+//
+//
+//  
+//    previous_previous_error = previous_error;
+//    previous_error = error;
+//    previous_previous_PID_signal = previous_PID_signal;
+//    previous_PID_signal = PID_signal;
+//
+//    
+//    
+//  int not_through_wrap_error = encoderPos - set_position;
+//  int mag = abs(not_through_wrap_error);
+//  int dir = not_through_wrap_error / mag;    //should be +1 or -1.
+//  
+//  int through_wrap_error = 2*position_limit - abs(encoderPos) - abs(set_position);
+//
+//  if(abs(not_through_wrap_error) <= through_wrap_error){
+//    error = not_through_wrap_error;
+//  } else {
+//    error = -1*dir*through_wrap_error;
+//  }
+//  //convert error to an angular error in deg
+//  error = error*180/position_limit;
+//  
+//  
+//  
+//  PID_signal = -ku1*previous_PID_signal - ku2*previous_previous_PID_signal + ke0*error + ke1*previous_error + ke2*previous_previous_error;
+//    
+//
+//}
+
+
+//void calculateSpeedPID(){
+//  previous_error_speed = error_speed;
+//
+//  error_speed = set_speed - encoderAngVel;
+//  //error_speed = encoderAngVel - set_speed;
+//  
+//  float delta_t = pid_interval/1000.0;
+//  
+//  proportional_term = error_speed * Kp;
+//  derivative_term = (error_speed - previous_error_speed)*Kd / delta_t; 
+//
+////    if(errors_speed_queue.count() <= numErrors){
+////      errors_speed_queue.push(error_speed);
+////      error_sum += error_speed;
+////    } else{
+////      float e = errors_speed_queue.pop();
+////      error_sum -= e;
+////      errors_speed_queue.push(error_speed);
+////      error_sum += error_speed;
+////    }
+////    integral_term = error_sum * Ki;
+//
+//  if(Ki > 0){
+//    error_sum += (error_speed*delta_t);
+//    integral_term = error_sum * Ki;
+//  } else {
+//    error_sum = 0;
+//    integral_term = 0;
+//  }
+//
+//    PID_signal = proportional_term + integral_term + derivative_term;
+//}
+
+//DISCRETE TIME VERSION
+void calculateSpeedPID(void){
+    previous_previous_error_speed = previous_error_speed;
+    previous_error_speed = error_speed;
+
+    error_speed = set_speed - encoderAngVel;
+  
+  float delta_t = pid_interval/1000.0;
+  float Ti = Kp/Ki;
+  float Td = Kd/Kp;
+  
+ float new_signal = Kp*(error_speed - previous_error_speed + delta_t*error_speed/Ti +(Td/delta_t)*(error_speed - 2*previous_error_speed + previous_previous_error_speed));
+
+  PID_signal += new_signal;
+    
+
 }
 
 
-void calculateSpeedPID(){
-  previous_error_speed = error_speed;
-
-  error_speed = set_speed - encoderAngVel;
-  //error_speed = encoderAngVel - set_speed;
-  
-  int delta_t = pid_interval;
-  
-  proportional_term = error_speed * Kp;
-  derivative_term = (error_speed - previous_error_speed)*Kd / delta_t; 
-
-    if(errors_speed_queue.count() <= numErrors){
-      errors_speed_queue.push(error_speed);
-      error_sum += error_speed;
-    } else{
-      float e = errors_speed_queue.pop();
-      error_sum -= e;
-      errors_speed_queue.push(error_speed);
-      error_sum += error_speed;
-    }
-    integral_term = error_sum * Ki;
-
-    PID_signal = proportional_term + integral_term + derivative_term;
-}
 
 void clearPIDQueues(void){
   while(!errors_queue.isEmpty()){
