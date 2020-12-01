@@ -1,14 +1,15 @@
 # pidcontroller
 
-MotorController contains the base motor controls for driving the motor forwards and backwards at certain speeds (input 0-255). The speed of the motor is currently limited for testing by the code.
+MotorController contains the base motor controls for driving the motor forwards and backwards at certain speeds (input 0-255).
 
-the 'examples' folder contains the PIDMotorController code itself. Current example commands are given in the SerialCommands text file and replicated below.
+Command list:
 
-{"cmd":"set_position","param":50}		//position parameter between -1000 and 1000
+{"cmd":"set_position","param":50}		//IN PID MODE, position parameter between -1000 and 1000
 {"cmd":"set_speed","param":50}		//speed parameter in rpm (pid_speed_mode) or 0-255 dc_motor mode)
-{"cmd":"set_height","param":10}		//set the height of the governor
+{"cmd":"set_height","param":2}		//set the height of the governor in mm
 
-{"cmd":"set_mode","param":"CALIBRATE"}		//still to be implemented
+{"cmd":"set_mode","param":"CALIBRATE"}		//zeroes the rotation and height of governor
+{"cmd":"set_mode","param":"ZERO"}			//zeroes the rotation
 {"cmd":"set_mode","param":"PID_POSITION_MODE"}
 {"cmd":"set_mode","param":"PID_SPEED_MODE"}	//set_speed parameter in rpm
 {"cmd":"set_mode","param":"DC_MOTOR_MODE"}	//set_speed parameter 0 - 255
@@ -26,6 +27,8 @@ STOPPED: The initial state and state from which all other states are reached. To
 AWAITING_STOP: The state into which all states enter when the stop command is sent. Checks that motor has stopped and then enters STOPPED state.
 
 CALIBRATE: rotates the disk until the index point is reached and sets encoder position to 0. Small calibration error allowed.
+
+ZERO: rotates the disk until the index point is reached and sets encoder position to 0.
 
 CONFIGURE: The state state sets the governor height to set_height.
 
