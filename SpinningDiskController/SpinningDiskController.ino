@@ -38,6 +38,7 @@ volatile int encoderPosLast = 0;
 volatile float encoderAngVel = 0;
 volatile int encoder_direction = 1;     //+1 CCW, -1 CW.
 volatile int encoder_direction_last = -1;
+volatile int encoder_direction_index = 1;
 
 unsigned long current_time_encoder = 0;
 unsigned long previous_time_encoder = 0;
@@ -250,7 +251,7 @@ void Sm_State_Zero(void){
   bool index_state = led_index_on;
   float starting_signal = 50;
   while(index_state == led_index_on){
-    motor.drive(-encoder_direction * starting_signal);
+    motor.drive(-encoder_direction_index * starting_signal);
     starting_signal += 0.000001;
   }
   motor.brake();
@@ -525,11 +526,11 @@ void doIndexPin(void){
   if(doInterruptIndex){
     //get direction of rotation
     
-//    if(encoderPos - encoderPosLast >= 0){
-//      encoder_direction = -1;
-//    } else{
-//      encoder_direction = 1;
-//    }
+    if(encoderPos - encoderPosLast >= 0){
+      encoder_direction_index = -1;
+    } else{
+      encoder_direction_index = 1;
+    }
   
 //    previous_time_index = current_time_index;
 //    current_time_index = millis();

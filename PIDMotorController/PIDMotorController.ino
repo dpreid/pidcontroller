@@ -379,7 +379,7 @@ void Sm_State_Zero(void){
   bool index_state = led_index_on;
   float starting_signal = 50;
   while(index_state == led_index_on){
-    motor.drive(-encoder_direction * starting_signal);
+    motor.drive(-encoder_direction_index * starting_signal);
     starting_signal += 0.000001;
   }
   motor.brake();
@@ -477,13 +477,13 @@ void TimerInterrupt(void){
 // SETUP AND LOOP==================================================================================
 void setup() {
   //setup encoder pins
-  pinMode(encoderPinA, INPUT_PULLUP);   //pullup resistors not on board
-  pinMode(encoderPinB, INPUT_PULLUP);
-  pinMode(indexPin, INPUT_PULLUP);
+//  pinMode(encoderPinA, INPUT_PULLUP);   //pullup resistors not on board
+//  pinMode(encoderPinB, INPUT_PULLUP);
+//  pinMode(indexPin, INPUT_PULLUP);
 
-//  pinMode(encoderPinA, INPUT);
-//  pinMode(encoderPinB, INPUT);
-//  pinMode(indexPin, INPUT);
+  pinMode(encoderPinA, INPUT);
+  pinMode(encoderPinB, INPUT);
+  pinMode(indexPin, INPUT);
 
   
   pinMode(SEN, OUTPUT);

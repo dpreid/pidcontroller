@@ -11,26 +11,19 @@
  */
 #include <Adafruit_NeoPixel.h>
 #include <Stepper.h>
-#include <QueueArray.h>
-#include <MotorController.h>
 #include <MotorControllerPmodHB3.h>
 
 #include "ArduinoJson-v6.9.1.h"
 
 //NeoPixel LED setup
 #define NEOPIXEL_PIN 14
-#define NUMPIXELS 64
+#define NUMPIXELS 8
 Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 // Pins on Motor Driver board.
 #define AIN1 5
-//#define AIN2 4
 #define PWMA 6
-//#define STBY 8
+
 //Pins for Stepper motor - governor control
-//#define SIN1 7
-//#define SIN2 19       //motors wired up incorrectly??
-//#define SIN3 12
-//#define SIN4 18
 #define SDIR 4
 #define SSTP 7
 #define SEN 16
@@ -41,7 +34,6 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define SSLP 8
 #define SFLT 15
  
-
 #define encoderPinA 3     //these pins all have interrupts on them.
 #define encoderPinB 2
 #define indexPin 11
@@ -53,7 +45,6 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 //#define ledPowerOn 17
 
 #define limitSwitchLower 21
-#define limitSwitchUpper 19
 
 bool debug = false;
 unsigned long report_interval = 10;   //ms
@@ -67,6 +58,7 @@ volatile float encoderAngVel = 0;
 //volatile float encoderAngVelLast = 0;
 volatile int encoder_direction = 1;     //+1 CCW, -1 CW.
 volatile int encoder_direction_last = -1;
+volatile int encoder_direction_index = 1;
 
 unsigned long current_time_encoder = 0;
 unsigned long previous_time_encoder = 0;
@@ -88,7 +80,7 @@ volatile float previous_previous_error = 0;
 volatile float error_speed = 0;
 volatile float previous_error_speed = 0;
 volatile float previous_previous_error_speed = 0;
-float previous_errors[10];
+
 volatile float proportional_term = 0;
 volatile float integral_term = 0;
 volatile float error_sum = 0;
@@ -96,10 +88,6 @@ volatile float derivative_term = 0;
 volatile float PID_signal = 0;
 volatile float previous_PID_signal = 0;
 volatile float previous_previous_PID_signal = 0;
-
-QueueArray <float> errors_queue;    //queue of previous errors 
-QueueArray <float> errors_speed_queue;
-int numErrors = 10;
 
 boolean A_set = false;
 boolean B_set = false;
@@ -114,22 +102,8 @@ const int offset = 1;
 
 bool led_index_on = false;
 
-//Motor motor = Motor(AIN1, AIN2, PWMA, offset, STBY);    //CHOICE FOR WHICH MOTOR DRIVER TO USE
 MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 
-//stepper variables====================
-volatile float governor_pos = 0;
-volatile float set_governor_pos = 0;
-float max_governor_pos = 30;          //the max increase in height of the governor
-//int steps_in_one_rotation = 513;   //32 actual steps * 16.032 internal gearing PROTOTYPE MOTOR
-int steps_in_one_rotation = 800;   //prototype motor 2 - this should be 200? I have no microstepping set.
-float dist_one_rotation = 1.0;    //mm increase in height of lower governor position
-long stepper_speed = 100;
-//Stepper stepper = Stepper(steps_in_one_rotation, SIN1, SIN2, SIN3, SIN4);
-Stepper stepper = Stepper(steps_in_one_rotation, SDIR, SSTP);
-//======================================
-
-int speed_limit = 100;        //pin signal limit equivalent to approx 5V using 12V power supply.
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 float zero_error = 10;
 
@@ -146,37 +120,24 @@ bool lowerLimitReached = false;
 #define TIMER_PRESCALER_DIV 1024
 float timer_interrupt_freq = 1000.0/pid_interval;   
 
-//ADD A FRICTION COMPENSATION MODEL - COULOMB FRICTION, CONSTANT FRICTION IN EACH DIRECTION
-//SHOULD BE BASED ON THE ACTUAL DIRECTION THE MOTOR IS ROTATING - SIGNAL SIGN AND DIRECTION ARE NOT NECESSARILY THE SAME
-float positive_friction = 255*0.25/12;  //additional signal that should be sent to motor to overcome friction
-float negative_friction = -255*0.5/12;
-
 /**
  * Defines the valid states for the state machine
  * 
  */
 typedef enum
 {
-  STATE_CALIBRATE,      //state for resetting the governor to zero angle and zero height
   STATE_ZERO,           //zeroes the angle without changing governor height
   STATE_AWAITING_STOP,  //checking if the motor has stopped
   STATE_STOPPED,        //no drive to motor
-  STATE_PID_SPEED_MODE, //pid controller mode - 1st order, speed functions
   STATE_PID_POSITION_MODE,  //pid controller - 2nd order, position functions
-  STATE_DC_MOTOR_MODE,    //regular dc motor functions with no PID controller
-  STATE_CONFIGURE, //mode for changing position of the governor.
 } StateType;
 
 //state Machine function prototypes
 //these are the functions that run whilst in each respective state.
-void Sm_State_Start_Calibration(void);
 void Sm_State_Zero(void);
 void Sm_State_Awaiting_Stop(void);
 void Sm_State_Stopped(void);
-void Sm_State_PID_Speed(void);
 void Sm_State_PID_Position(void);
-void Sm_State_DC_Motor(void);
-void Sm_State_Configure(void);
 
 /**
  * Type definition used to define the state
@@ -194,17 +155,13 @@ typedef struct
  */
 StateMachineType StateMachine[] =
 {
-  {STATE_CALIBRATE, Sm_State_Start_Calibration},
   {STATE_ZERO, Sm_State_Zero},
   {STATE_AWAITING_STOP, Sm_State_Awaiting_Stop},
   {STATE_STOPPED, Sm_State_Stopped},
-  {STATE_PID_SPEED_MODE, Sm_State_PID_Speed},
   {STATE_PID_POSITION_MODE, Sm_State_PID_Position},
-  {STATE_DC_MOTOR_MODE, Sm_State_DC_Motor},
-  {STATE_CONFIGURE, Sm_State_Configure}
 };
  
-int NUM_STATES = 8;
+int NUM_STATES = 4;
 
 /**
  * Stores the current state of the state machine
@@ -216,7 +173,6 @@ StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
 
 
 void Sm_State_Stopped(void){
-  //motor.brake();
   enableStepper(false);   
   //doInterruptAB = false;
   doInterruptIndex = true;       
@@ -224,7 +180,7 @@ void Sm_State_Stopped(void){
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
   set_speed = 0;
   encoderAngVel = 0;
-  //report_encoder_speed();
+ 
   report_encoder();
   SmState = STATE_STOPPED;
 }
@@ -272,21 +228,6 @@ void Sm_State_PID_Position(void){
     //doInterruptAB = true;
     doInterruptIndex = true;
 
-//PID position doesn't need a speed limit
-
-//   if(PID_signal >=-speed_limit && PID_signal <= speed_limit){  
-//      motor.drive(PID_signal); 
-//   } else if(PID_signal > speed_limit){
-//      motor.drive(speed_limit);
-//   } else{
-//      motor.drive(-speed_limit);
-//   }
-
-//drive at PID signal unless the signal is greater than the max/less than min.
-    //Serial.println(PID_signal);
-//    Serial.print("Kp = ");
-//    Serial.println(Kp);
-
     if(PID_signal > 255){
       motor.drive(255);
     } else if(PID_signal < -255){
@@ -294,81 +235,12 @@ void Sm_State_PID_Position(void){
     } else{
       motor.drive(PID_signal);
     }
-  
-
-   //setRotationLEDs(PID_signal);
   
   report_encoder();
   SmState = STATE_PID_POSITION_MODE;
 
 }
 
-void Sm_State_PID_Speed(void){
-
-    //doInterruptAB = false;
-    doInterruptIndex = true;
-    
-//limit the rotation speed for now!
-//   if(PID_signal >=-speed_limit && PID_signal <= speed_limit){  
-//      motor.drive(PID_signal); 
-//   } else if(PID_signal > speed_limit){
-//      motor.drive(speed_limit);
-//   } else{
-//      motor.drive(-speed_limit);
-//   }
-    if(PID_signal > 255){
-      motor.drive(255);
-    } else if(PID_signal < -255){
-      motor.drive(-255);
-    } else{
-      motor.drive(PID_signal);
-    }
-  
-  report_encoder();  
-  //report_encoder_speed();
-  SmState = STATE_PID_SPEED_MODE;
-}
-
-
-void Sm_State_Start_Calibration(void){
-  
-  //doInterruptAB = false;
-  doInterruptIndex = true;
-
-  bool index_state = led_index_on;
-  float starting_signal = 50;
-  while(index_state == led_index_on){
-    motor.drive(-encoder_direction * starting_signal);
-    starting_signal += 0.000001;
-  }
-
-//  int t = millis();
-//  while(millis() < t + 100){
-//    motor.brake();  
-//  }
-  motor.brake();
-
-  encoderPos = 0;
-
-  delay(100);
-  
-  report_encoder();
-  if(encoderPos > zero_error || encoderPos < -zero_error){    //allowed calibration error
-    SmState = STATE_CALIBRATE;  
-  } else{
-    enableStepper(true);
-    while(!lowerLimitReached){
-      stepper.setSpeed(stepper_speed);
-      stepper.step(-1);
-      //delay(100);
-    }
-//    stepper.setSpeed(stepper_speed);
-//    stepper.step(100);
-    //lowerLimitReached = false;
-    SmState = STATE_STOPPED;  
-  }
-  
-}
 
 void Sm_State_Zero(void){
   
@@ -378,7 +250,7 @@ void Sm_State_Zero(void){
   bool index_state = led_index_on;
   float starting_signal = 50;
   while(index_state == led_index_on){
-    motor.drive(-encoder_direction * starting_signal);
+    motor.drive(-encoder_direction_index * starting_signal);
     starting_signal += 0.000001;
   }
   motor.brake();
@@ -394,59 +266,6 @@ void Sm_State_Zero(void){
     SmState = STATE_STOPPED;  
   }
   
-}
-
-void Sm_State_DC_Motor(void){
-  
-//  if(set_speed <= speed_limit && set_speed >= -speed_limit){
-//    motor.drive(set_speed);  
-//  } else if(set_speed > speed_limit){
-//    motor.drive(speed_limit);
-//  } else{
-//    motor.drive(-speed_limit);
-//  }
-  motor.drive(set_speed);
-
-  //doInterruptAB = false;
-  doInterruptIndex = true;
-  
-  //setRotationLEDs(encoderAngVel);
-  report_encoder();
-  //report_encoder_speed();
-  SmState = STATE_DC_MOTOR_MODE;
-}
-
-//User sets the governor position that they want. Stepper steps until that position is reached. Limit switch
-//can stop the motion.
-void Sm_State_Configure(void){
-  enableStepper(true);
-  //digitalWrite(SEN, LOW);   //enable the stepper
-  stepper.setSpeed(stepper_speed);
-  
-  float diff = set_governor_pos - governor_pos;
-  //float num_steps_to_take = getStepsFromDistance(diff);
-  
-  if(diff > 0){ 
-    //moving up
-    //stepper.step(num_steps_to_take);
-    stepper.step(1);
-    governor_pos += dist_one_rotation / steps_in_one_rotation;
-    
-  } else if(diff < 0){
-    //moving down
-    //stepper.step(num_steps_to_take);
-    stepper.step(-1);
-    governor_pos -= dist_one_rotation / steps_in_one_rotation;
-    
-  } 
-    //governor_pos = set_governor_pos;
-  if(diff <= 0.001 && diff >= -0.001) { //need to test this error allowance
-    stepper.setSpeed(0);
-    SmState = STATE_STOPPED;
-  } else{
-    SmState = STATE_CONFIGURE;
-  }
-  //SmState = STATE_STOPPED;
 }
 
 //STATE MACHINE RUN FUNCTION
@@ -500,46 +319,15 @@ void setup() {
   digitalWrite(SM1, LOW);
   digitalWrite(SRST, HIGH);   //needs to be HIGH to enable driver
   digitalWrite(SSLP, HIGH);   //needs to be HIGH to enable driver
-  
-
-  
-  //digitalWrite(SEN, HIGH);    //start stepper in disabled mode
-
-  
-  //digitalWrite(encoderPinA, HIGH);  // turn on pull-up resistor....DONE ABOVE
-  //digitalWrite(encoderPinB, HIGH);  // turn on pull-up resistor
-  //digitalWrite(indexPin, HIGH);
-
-  //setup stepper motor pins
-//  pinMode(SIN1, OUTPUT);
-//  pinMode(SIN2, OUTPUT);
-//  pinMode(SIN3, OUTPUT);
-//  pinMode(SIN4, OUTPUT);
-  
-  //setup led output pins
-//  pinMode(ledPositive, OUTPUT);
-//  pinMode(ledIndex, OUTPUT);
-//  pinMode(ledNegative, OUTPUT);
-//  pinMode(ledPowerOn, OUTPUT);
 
   pixels.begin(); // INITIALIZE NeoPixel
-
-  //setup limit switches
-  pinMode(limitSwitchLower, INPUT_PULLUP);
-  //pinMode(limitSwitchUpper, INPUT_PULLUP);
-  
-  //digitalWrite(ledPowerOn, HIGH);   //just to show that arduino is on.
   
   // encoder pin on interrupt (pin 2)
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
   // encoder pin on interrupt (pin 3)
   attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
   // encoder pin on interrupt (pin 11)
-  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
-
-  //interruptsfor limit switches
-  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);
-  //attachInterrupt(digitalPinToInterrupt(limitSwitchUpper), doLimitUpper, HIGH);   
+  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);  
 
   current_time_index = millis();   
   previous_time_index = millis();
@@ -785,11 +573,11 @@ void doIndexPin(void){
   if(doInterruptIndex){
     //get direction of rotation
     
-//    if(encoderPos - encoderPosLast >= 0){
-//      encoder_direction = -1;
-//    } else{
-//      encoder_direction = 1;
-//    }
+    if(encoderPos - encoderPosLast >= 0){
+      encoder_direction_index = -1;
+    } else{
+      encoder_direction_index = 1;
+    }
   
 //    previous_time_index = current_time_index;
 //    current_time_index = millis();
