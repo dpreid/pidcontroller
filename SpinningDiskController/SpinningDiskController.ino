@@ -1,8 +1,8 @@
 
 /*
- * PIDMotorController
+ * Remote Lab: Spinning Disk Controller
  * David Reid
- * 16/09/20
+ * 02/12/20
  * 
  * Based upon Tim Drysdale's penduino code.
  * https://github.com/timdrysdale/penduino
@@ -11,49 +11,21 @@
  */
 #include <Adafruit_NeoPixel.h>
 #include <Stepper.h>
-#include <QueueArray.h>
-#include <MotorController.h>
 #include <MotorControllerPmodHB3.h>
 
 #include "ArduinoJson-v6.9.1.h"
 
 //NeoPixel LED setup
 #define NEOPIXEL_PIN 14
-#define NUMPIXELS 64
+#define NUMPIXELS 8
 Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 // Pins on Motor Driver board.
 #define AIN1 5
-//#define AIN2 4
 #define PWMA 6
-//#define STBY 8
-//Pins for Stepper motor - governor control
-//#define SIN1 7
-//#define SIN2 19       //motors wired up incorrectly??
-//#define SIN3 12
-//#define SIN4 18
-#define SDIR 4
-#define SSTP 7
-#define SEN 16
-#define SM0 20
-#define SM1 12
-#define SM2 10
-#define SRST 9
-#define SSLP 8
-#define SFLT 15
  
-
 #define encoderPinA 3     //these pins all have interrupts on them.
 #define encoderPinB 2
 #define indexPin 11
-
-//LED output pins         //SWAPPING THESE OUT FOR NEOPIXELS
-//#define ledPositive 14
-//#define ledIndex 15
-//#define ledNegative 16
-//#define ledPowerOn 17
-
-#define limitSwitchLower 21
-#define limitSwitchUpper 19
 
 bool debug = false;
 unsigned long report_interval = 10;   //ms
@@ -64,10 +36,8 @@ bool encoderPlain = false;
 volatile int encoderPos = 0;
 volatile int encoderPosLast = 0;
 volatile float encoderAngVel = 0;
-//volatile float encoderAngVelLast = 0;
 volatile int encoder_direction = 1;     //+1 CCW, -1 CW.
 volatile int encoder_direction_last = -1;
-volatile int encoder_direction_index = 1;   //the direction of rotation as the idnex pin is passed
 
 unsigned long current_time_encoder = 0;
 unsigned long previous_time_encoder = 0;
@@ -78,7 +48,8 @@ unsigned long min_rotation_time = 6;      //any time difference smaller than 6ms
 //other user set values
 float set_position = 0;     //the position the user has set
 float set_speed = 0;        //user set position for PID_Speed mode and DC_Motor mode
-float Kp = 1.0;               //PID parameters
+//PID parameters
+float Kp = 1.0;              
 float Ki = 0.0;
 float Kd = 0.0;
 
@@ -89,7 +60,6 @@ volatile float previous_previous_error = 0;
 volatile float error_speed = 0;
 volatile float previous_error_speed = 0;
 volatile float previous_previous_error_speed = 0;
-float previous_errors[10];
 volatile float proportional_term = 0;
 volatile float integral_term = 0;
 volatile float error_sum = 0;
@@ -97,10 +67,6 @@ volatile float derivative_term = 0;
 volatile float PID_signal = 0;
 volatile float previous_PID_signal = 0;
 volatile float previous_previous_PID_signal = 0;
-
-QueueArray <float> errors_queue;    //queue of previous errors 
-QueueArray <float> errors_speed_queue;
-int numErrors = 10;
 
 boolean A_set = false;
 boolean B_set = false;
@@ -115,22 +81,8 @@ const int offset = 1;
 
 bool led_index_on = false;
 
-//Motor motor = Motor(AIN1, AIN2, PWMA, offset, STBY);    //CHOICE FOR WHICH MOTOR DRIVER TO USE
 MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 
-//stepper variables====================
-volatile float governor_pos = 0;
-volatile float set_governor_pos = 0;
-float max_governor_pos = 30;          //the max increase in height of the governor
-//int steps_in_one_rotation = 513;   //32 actual steps * 16.032 internal gearing PROTOTYPE MOTOR
-int steps_in_one_rotation = 800;   //prototype motor 2 - this should be 200? I have no microstepping set.
-float dist_one_rotation = 1.0;    //mm increase in height of lower governor position
-long stepper_speed = 100;
-//Stepper stepper = Stepper(steps_in_one_rotation, SIN1, SIN2, SIN3, SIN4);
-Stepper stepper = Stepper(steps_in_one_rotation, SDIR, SSTP);
-//======================================
-
-int speed_limit = 100;        //pin signal limit equivalent to approx 5V using 12V power supply.
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 float zero_error = 10;
 
@@ -138,8 +90,8 @@ int pid_interval = 3;       //ms, for timer interrupt
 
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 
-bool doInterruptAB = false;
-bool doInterruptIndex = false;
+bool doInterruptAB = true;
+bool doInterruptIndex = true;
 
 bool lowerLimitReached = false;
 
@@ -147,37 +99,28 @@ bool lowerLimitReached = false;
 #define TIMER_PRESCALER_DIV 1024
 float timer_interrupt_freq = 1000.0/pid_interval;   
 
-//ADD A FRICTION COMPENSATION MODEL - COULOMB FRICTION, CONSTANT FRICTION IN EACH DIRECTION
-//SHOULD BE BASED ON THE ACTUAL DIRECTION THE MOTOR IS ROTATING - SIGNAL SIGN AND DIRECTION ARE NOT NECESSARILY THE SAME
-float positive_friction = 255*0.25/12;  //additional signal that should be sent to motor to overcome friction
-float negative_friction = -255*0.5/12;
-
 /**
  * Defines the valid states for the state machine
  * 
  */
 typedef enum
 {
-  STATE_CALIBRATE,      //state for resetting the governor to zero angle and zero height
   STATE_ZERO,           //zeroes the angle without changing governor height
   STATE_AWAITING_STOP,  //checking if the motor has stopped
   STATE_STOPPED,        //no drive to motor
   STATE_PID_SPEED_MODE, //pid controller mode - 1st order, speed functions
   STATE_PID_POSITION_MODE,  //pid controller - 2nd order, position functions
   STATE_DC_MOTOR_MODE,    //regular dc motor functions with no PID controller
-  STATE_CONFIGURE, //mode for changing position of the governor.
 } StateType;
 
 //state Machine function prototypes
 //these are the functions that run whilst in each respective state.
-void Sm_State_Start_Calibration(void);
 void Sm_State_Zero(void);
 void Sm_State_Awaiting_Stop(void);
 void Sm_State_Stopped(void);
 void Sm_State_PID_Speed(void);
 void Sm_State_PID_Position(void);
 void Sm_State_DC_Motor(void);
-void Sm_State_Configure(void);
 
 /**
  * Type definition used to define the state
@@ -195,17 +138,15 @@ typedef struct
  */
 StateMachineType StateMachine[] =
 {
-  {STATE_CALIBRATE, Sm_State_Start_Calibration},
   {STATE_ZERO, Sm_State_Zero},
   {STATE_AWAITING_STOP, Sm_State_Awaiting_Stop},
   {STATE_STOPPED, Sm_State_Stopped},
   {STATE_PID_SPEED_MODE, Sm_State_PID_Speed},
   {STATE_PID_POSITION_MODE, Sm_State_PID_Position},
-  {STATE_DC_MOTOR_MODE, Sm_State_DC_Motor},
-  {STATE_CONFIGURE, Sm_State_Configure}
+  {STATE_DC_MOTOR_MODE, Sm_State_DC_Motor}
 };
  
-int NUM_STATES = 8;
+int NUM_STATES = 6;
 
 /**
  * Stores the current state of the state machine
@@ -216,16 +157,14 @@ StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
 //DEFINE STATE MACHINE FUNCTIONS================================================================
 
 
-void Sm_State_Stopped(void){
-  //motor.brake();
-  enableStepper(false);   
+void Sm_State_Stopped(void){  
   //doInterruptAB = false;
   doInterruptIndex = true;       
   lowerLimitReached = false;    //CHECK THIS
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
   set_speed = 0;
   encoderAngVel = 0;
-  //report_encoder_speed();
+
   report_encoder();
   SmState = STATE_STOPPED;
 }
@@ -273,21 +212,6 @@ void Sm_State_PID_Position(void){
     //doInterruptAB = true;
     doInterruptIndex = true;
 
-//PID position doesn't need a speed limit
-
-//   if(PID_signal >=-speed_limit && PID_signal <= speed_limit){  
-//      motor.drive(PID_signal); 
-//   } else if(PID_signal > speed_limit){
-//      motor.drive(speed_limit);
-//   } else{
-//      motor.drive(-speed_limit);
-//   }
-
-//drive at PID signal unless the signal is greater than the max/less than min.
-    //Serial.println(PID_signal);
-//    Serial.print("Kp = ");
-//    Serial.println(Kp);
-
     if(PID_signal > 255){
       motor.drive(255);
     } else if(PID_signal < -255){
@@ -295,9 +219,6 @@ void Sm_State_PID_Position(void){
     } else{
       motor.drive(PID_signal);
     }
-  
-
-   //setRotationLEDs(PID_signal);
   
   report_encoder();
   SmState = STATE_PID_POSITION_MODE;
@@ -309,14 +230,6 @@ void Sm_State_PID_Speed(void){
     //doInterruptAB = false;
     doInterruptIndex = true;
     
-//limit the rotation speed for now!
-//   if(PID_signal >=-speed_limit && PID_signal <= speed_limit){  
-//      motor.drive(PID_signal); 
-//   } else if(PID_signal > speed_limit){
-//      motor.drive(speed_limit);
-//   } else{
-//      motor.drive(-speed_limit);
-//   }
     if(PID_signal > 255){
       motor.drive(255);
     } else if(PID_signal < -255){
@@ -326,49 +239,7 @@ void Sm_State_PID_Speed(void){
     }
   
   report_encoder();  
-  //report_encoder_speed();
   SmState = STATE_PID_SPEED_MODE;
-}
-
-
-void Sm_State_Start_Calibration(void){
-  
-  //doInterruptAB = false;
-  doInterruptIndex = true;
-
-  bool index_state = led_index_on;
-  float starting_signal = 50;
-  while(index_state == led_index_on){
-    motor.drive(-encoder_direction_index * starting_signal);
-    starting_signal += 0.000001;
-  }
-
-//  int t = millis();
-//  while(millis() < t + 100){
-//    motor.brake();  
-//  }
-  motor.brake();
-
-  encoderPos = 0;
-
-  delay(100);
-  
-  report_encoder();
-  if(encoderPos > zero_error || encoderPos < -zero_error){    //allowed calibration error
-    SmState = STATE_CALIBRATE;  
-  } else{
-    enableStepper(true);
-    while(!lowerLimitReached){
-      stepper.setSpeed(stepper_speed);
-      stepper.step(-1);
-      //delay(100);
-    }
-//    stepper.setSpeed(stepper_speed);
-//    stepper.step(100);
-    //lowerLimitReached = false;
-    SmState = STATE_STOPPED;  
-  }
-  
 }
 
 void Sm_State_Zero(void){
@@ -399,56 +270,16 @@ void Sm_State_Zero(void){
 
 void Sm_State_DC_Motor(void){
   
-//  if(set_speed <= speed_limit && set_speed >= -speed_limit){
-//    motor.drive(set_speed);  
-//  } else if(set_speed > speed_limit){
-//    motor.drive(speed_limit);
-//  } else{
-//    motor.drive(-speed_limit);
-//  }
   motor.drive(set_speed);
 
   //doInterruptAB = false;
   doInterruptIndex = true;
   
-  //setRotationLEDs(encoderAngVel);
   report_encoder();
-  //report_encoder_speed();
   SmState = STATE_DC_MOTOR_MODE;
 }
 
-//User sets the governor position that they want. Stepper steps until that position is reached. Limit switch
-//can stop the motion.
-void Sm_State_Configure(void){
-  enableStepper(true);
-  //digitalWrite(SEN, LOW);   //enable the stepper
-  stepper.setSpeed(stepper_speed);
-  
-  float diff = set_governor_pos - governor_pos;
-  //float num_steps_to_take = getStepsFromDistance(diff);
-  
-  if(diff > 0){ 
-    //moving up
-    //stepper.step(num_steps_to_take);
-    stepper.step(1);
-    governor_pos += dist_one_rotation / steps_in_one_rotation;
-    
-  } else if(diff < 0){
-    //moving down
-    //stepper.step(num_steps_to_take);
-    stepper.step(-1);
-    governor_pos -= dist_one_rotation / steps_in_one_rotation;
-    
-  } 
-    //governor_pos = set_governor_pos;
-  if(diff <= 0.001 && diff >= -0.001) { //need to test this error allowance
-    stepper.setSpeed(0);
-    SmState = STATE_STOPPED;
-  } else{
-    SmState = STATE_CONFIGURE;
-  }
-  //SmState = STATE_STOPPED;
-}
+//*****************************************************************************
 
 //STATE MACHINE RUN FUNCTION
 void Sm_Run(void)
@@ -476,60 +307,12 @@ void TimerInterrupt(void){
 
 // SETUP AND LOOP==================================================================================
 void setup() {
-  //setup encoder pins
-  pinMode(encoderPinA, INPUT_PULLUP);   //pullup resistors not on board
-  pinMode(encoderPinB, INPUT_PULLUP);
-  pinMode(indexPin, INPUT_PULLUP);
-
-//  pinMode(encoderPinA, INPUT);
-//  pinMode(encoderPinB, INPUT);
-//  pinMode(indexPin, INPUT);
-
-  
-  pinMode(SEN, OUTPUT);
-  enableStepper(false);
-
-  //set pins for stepper driver
-  pinMode(SM0, OUTPUT);
-  pinMode(SM1, OUTPUT);
-  pinMode(SM2, OUTPUT);
-  pinMode(SRST, OUTPUT);
-  pinMode(SSLP, OUTPUT);
-  //pinMode(SFLT, INPUT_PULLUP);
-  digitalWrite(SM0, LOW);
-  digitalWrite(SM1, LOW);
-  digitalWrite(SM1, LOW);
-  digitalWrite(SRST, HIGH);   //needs to be HIGH to enable driver
-  digitalWrite(SSLP, HIGH);   //needs to be HIGH to enable driver
-  
-
-  
-  //digitalWrite(SEN, HIGH);    //start stepper in disabled mode
-
-  
-  //digitalWrite(encoderPinA, HIGH);  // turn on pull-up resistor....DONE ABOVE
-  //digitalWrite(encoderPinB, HIGH);  // turn on pull-up resistor
-  //digitalWrite(indexPin, HIGH);
-
-  //setup stepper motor pins
-//  pinMode(SIN1, OUTPUT);
-//  pinMode(SIN2, OUTPUT);
-//  pinMode(SIN3, OUTPUT);
-//  pinMode(SIN4, OUTPUT);
-  
-  //setup led output pins
-//  pinMode(ledPositive, OUTPUT);
-//  pinMode(ledIndex, OUTPUT);
-//  pinMode(ledNegative, OUTPUT);
-//  pinMode(ledPowerOn, OUTPUT);
+  //setup encoder pins, pullup resistors on PCB
+  pinMode(encoderPinA, INPUT);
+  pinMode(encoderPinB, INPUT);
+  pinMode(indexPin, INPUT);
 
   pixels.begin(); // INITIALIZE NeoPixel
-
-  //setup limit switches
-  pinMode(limitSwitchLower, INPUT_PULLUP);
-  //pinMode(limitSwitchUpper, INPUT_PULLUP);
-  
-  //digitalWrite(ledPowerOn, HIGH);   //just to show that arduino is on.
   
   // encoder pin on interrupt (pin 2)
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
@@ -537,10 +320,6 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
   // encoder pin on interrupt (pin 11)
   attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
-
-  //interruptsfor limit switches
-  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);
-  //attachInterrupt(digitalPinToInterrupt(limitSwitchUpper), doLimitUpper, HIGH);   
 
   current_time_index = millis();   
   previous_time_index = millis();
@@ -575,14 +354,12 @@ StateType readSerialJSON(StateType SmState){
       if(SmState == STATE_PID_POSITION_MODE){
         float new_position = doc["param"];
         if(new_position >= -position_limit && new_position <= position_limit){
-          resetPIDSignal();
           
+          resetPIDSignal();
           set_position = new_position;
+          
         } else{
-//          Serial.print("position needs to be between -");
-//          Serial.print(position_limit);
-//          Serial.print(" and ");
-//          Serial.println(position_limit);
+          Serial.println("Position outside limits");
         }
       } else{
           Serial.println("In wrong state to set position");
@@ -591,11 +368,11 @@ StateType readSerialJSON(StateType SmState){
       
   } else if(strcmp(cmd, "set_speed")==0){
       if(SmState == STATE_PID_SPEED_MODE || SmState == STATE_DC_MOTOR_MODE){
+        
         float new_speed = doc["param"];
-        
         resetPIDSignal();
-        
         set_speed = new_speed;
+        
       } else{
         Serial.println("In wrong state to set speed");
       }
@@ -616,12 +393,6 @@ StateType readSerialJSON(StateType SmState){
         else if(strcmp(new_mode, "DC_MOTOR_MODE") == 0){
           SmState = STATE_DC_MOTOR_MODE;
         }
-        else if(strcmp(new_mode, "CONFIGURE") == 0){
-          SmState = STATE_CONFIGURE;
-        }
-        else if(strcmp(new_mode, "CALIBRATE") == 0){
-          SmState = STATE_CALIBRATE;
-        }
         else if(strcmp(new_mode, "ZERO") == 0){
           SmState = STATE_ZERO;
         }
@@ -629,14 +400,12 @@ StateType readSerialJSON(StateType SmState){
       } else {
         
         if(strcmp(new_mode, "STOP") == 0){
-          SmState = STATE_AWAITING_STOP;      
-          //clearPIDQueues();                 //ensure the PID integral term is cleared for next run
+          
           resetPIDSignal();
+          SmState = STATE_AWAITING_STOP;      
         } 
-        
       }
       
-   
     } else if(strcmp(cmd, "set_parameters")==0){
 
       resetPIDSignal();
@@ -658,18 +427,7 @@ StateType readSerialJSON(StateType SmState){
         float timer_interrupt_freq = 1000/pid_interval;  
         setTimerFrequency(timer_interrupt_freq);        
       }
-
-      if(!doc["N_errors"].isNull()){
-        numErrors = doc["N_errors"];
-      }
     } 
-    else if(strcmp(cmd, "set_height") == 0){
-      float new_pos = doc["param"];
-      if(new_pos <= max_governor_pos && new_pos >= 0){
-        set_governor_pos = new_pos;
-      }
-    }
-    
   }
       return SmState;     //return whatever state it changed to or maintain the state.
  } 
@@ -714,25 +472,6 @@ void report_encoder(void)
       previous_report_time = millis();
     }
   
-}
-
-//outputs encoder speed to serial bus.
-void report_encoder_speed(void){
-   if (millis() >= previous_report_time + report_interval){
-      if (encoderPlain){
-        Serial.print("ang vel = ");
-        Serial.println(encoderAngVel);
-      }
-      else{
-        Serial.print("{\"enc_ang_vel\":");
-        Serial.print(encoderAngVel);
-        Serial.print(",\"time\":");
-        Serial.print(millis());  
-        Serial.println("}");
-      }
-
-      previous_report_time = millis();
-    }
 }
 
 // Interrupt on A changing state
@@ -786,11 +525,11 @@ void doIndexPin(void){
   if(doInterruptIndex){
     //get direction of rotation
     
-    if(encoderPos - encoderPosLast >= 0){
-      encoder_direction_index = -1;
-    } else{
-      encoder_direction_index = 1;
-    }
+//    if(encoderPos - encoderPosLast >= 0){
+//      encoder_direction = -1;
+//    } else{
+//      encoder_direction = 1;
+//    }
   
 //    previous_time_index = current_time_index;
 //    current_time_index = millis();
@@ -820,108 +559,6 @@ void encoderWrap(void){
       }
 }
 
-//void calculatePositionPID(void){
-//  previous_error = error;
-//  int not_through_wrap_error = encoderPos - set_position;
-//  int mag = abs(not_through_wrap_error);
-//  int dir = not_through_wrap_error / mag;    //should be +1 or -1.
-//  
-//  int through_wrap_error = position_limit - abs(encoderPos) + position_limit - abs(set_position);
-//
-//  if(abs(not_through_wrap_error) <= through_wrap_error){
-//    error = not_through_wrap_error;
-//  } else {
-//    error = -1*dir*through_wrap_error;
-//  }
-//  //convert error to an angular error in deg
-//  error = error*180/position_limit;
-//  
-//  
-//  //unsigned long delta_t = 2*(current_time - previous_time);
-//  int delta_t = pid_interval;
-// 
-//  proportional_term = error * Kp;
-//
-//  if(Kd > 0){
-//     derivative_term = 1000*(error - previous_error)*Kd / delta_t; 
-//  } else{
-//    derivative_term = 0;
-//  }
-//  
-//
-//  if(Ki > 0){
-//    if(errors_queue.count() <= numErrors){
-//      errors_queue.push(error*delta_t/1000);
-//      error_sum += (error*delta_t/1000);
-//    } else{
-//      float e = errors_queue.pop();
-//      error_sum -= e;
-//      errors_queue.push(error*delta_t/1000);
-//      error_sum += (error*delta_t/1000);
-//    }
-//    integral_term = error_sum * Ki;
-//  } else {
-//    integral_term = 0;
-//  }
-//    
-//
-//    PID_signal = proportional_term + integral_term + derivative_term;
-//    
-//    if(encoderPos - encoderPosLast > 0){
-//      PID_signal += negative_friction;
-//    } else if(encoderPos - encoderPosLast < 0){
-//      PID_signal += positive_friction;
-//    } 
-//}
-
-//void calculatePositionPID(void){
-//    previous_error = error;
-//  float not_through_wrap_error = encoderPos - set_position;
-//  float mag = abs(not_through_wrap_error);
-//  int dir = not_through_wrap_error / mag;    //should be +1 or -1.
-//  
-//  float through_wrap_error = 2*position_limit - abs(encoderPos) - abs(set_position);
-//
-//  if(abs(not_through_wrap_error) <= through_wrap_error){
-//    error = not_through_wrap_error;
-//  } else {
-//    error = -1*dir*through_wrap_error;
-//  }
-//  //convert error to an angular error in deg
-//  error = error*180.0/position_limit;
-//  
-//  
-//  //unsigned long delta_t = 2*(current_time - previous_time);
-//  float delta_t = pid_interval/1000.0;
-// 
-//  proportional_term = error * Kp;
-//
-//  if(Kd > 0){
-//     derivative_term = (error - previous_error)*Kd / delta_t; 
-//  } else{
-//    derivative_term = 0;
-//  }
-//  
-//
-//  if(Ki > 0){
-//    error_sum += (error*delta_t);
-//    integral_term = error_sum * Ki;
-//  } else {
-//    error_sum = 0;
-//    integral_term = 0;
-//  }
-//    
-//
-//    PID_signal = proportional_term + integral_term + derivative_term;
-//    
-////    if(encoderPos - encoderPosLast > 0){
-////      PID_signal += negative_friction;
-////    } else if(encoderPos - encoderPosLast < 0){
-////      PID_signal += positive_friction;
-////    } 
-//    
-//
-//}
 
 //DISCRETE TIME VERSION
 void calculatePositionPID(void){
@@ -954,88 +591,6 @@ void calculatePositionPID(void){
 
 }
 
-//DISCRETE TIME VERSION 2
-//void calculatePositionPID(void){
-//  float Ts = pid_interval/1000.0;
-//  int N = 20;   //filter
-//  float a0 = (1+N*Ts);
-//  float a1 = -(2+N*Ts);
-//  float a2 = 1.0;
-//  float b0 = Kp*(1+N*Ts) + Ki*Ts*(1+N*Ts) + Kd*N;
-//  float b1 = -(Kp*(2+N*Ts) + Ki*Ts + 2*Kd*N);
-//  float b2 = Kp + Kd*N;
-//
-//  float ku1 = a1/a0; 
-//  float ku2 = a2/a0; 
-//  float ke0 = b0/a0; 
-//  float ke1 = b1/a0; 
-//  float ke2 = b2/a0;
-//
-//
-//
-//  
-//    previous_previous_error = previous_error;
-//    previous_error = error;
-//    previous_previous_PID_signal = previous_PID_signal;
-//    previous_PID_signal = PID_signal;
-//
-//    
-//    
-//  int not_through_wrap_error = encoderPos - set_position;
-//  int mag = abs(not_through_wrap_error);
-//  int dir = not_through_wrap_error / mag;    //should be +1 or -1.
-//  
-//  int through_wrap_error = 2*position_limit - abs(encoderPos) - abs(set_position);
-//
-//  if(abs(not_through_wrap_error) <= through_wrap_error){
-//    error = not_through_wrap_error;
-//  } else {
-//    error = -1*dir*through_wrap_error;
-//  }
-//  //convert error to an angular error in deg
-//  error = error*180/position_limit;
-//  
-//  
-//  
-//  PID_signal = -ku1*previous_PID_signal - ku2*previous_previous_PID_signal + ke0*error + ke1*previous_error + ke2*previous_previous_error;
-//    
-//
-//}
-
-
-//void calculateSpeedPID(){
-//  previous_error_speed = error_speed;
-//
-//  error_speed = set_speed - encoderAngVel;
-//  //error_speed = encoderAngVel - set_speed;
-//  
-//  float delta_t = pid_interval/1000.0;
-//  
-//  proportional_term = error_speed * Kp;
-//  derivative_term = (error_speed - previous_error_speed)*Kd / delta_t; 
-//
-////    if(errors_speed_queue.count() <= numErrors){
-////      errors_speed_queue.push(error_speed);
-////      error_sum += error_speed;
-////    } else{
-////      float e = errors_speed_queue.pop();
-////      error_sum -= e;
-////      errors_speed_queue.push(error_speed);
-////      error_sum += error_speed;
-////    }
-////    integral_term = error_sum * Ki;
-//
-//  if(Ki > 0){
-//    error_sum += (error_speed*delta_t);
-//    integral_term = error_sum * Ki;
-//  } else {
-//    error_sum = 0;
-//    integral_term = 0;
-//  }
-//
-//    PID_signal = proportional_term + integral_term + derivative_term;
-//}
-
 //DISCRETE TIME VERSION
 void calculateSpeedPID(void){
     previous_previous_error_speed = previous_error_speed;
@@ -1051,19 +606,6 @@ void calculateSpeedPID(void){
 
   PID_signal += new_signal;
     
-
-}
-
-
-
-void clearPIDQueues(void){
-  while(!errors_queue.isEmpty()){
-    errors_queue.pop();
-  }
-
-  while(!errors_speed_queue.isEmpty()){
-    errors_speed_queue.pop();
-  }  
 }
 
 
@@ -1095,17 +637,6 @@ void setStepperLEDs(float value){
 }
 
 void setRotationLEDs(float value){
-//  if(value > 0){
-//    digitalWrite(ledPositive, HIGH);
-//    digitalWrite(ledNegative, LOW);
-//  } else if(value < 0){
-//    digitalWrite(ledPositive, LOW);
-//    digitalWrite(ledNegative, HIGH);
-//  } else{
-//    digitalWrite(ledPositive, LOW);
-//    digitalWrite(ledNegative, LOW);
-//  }
-
   //pixels.clear();
   if(value > 0){
     pixels.setPixelColor(5, pixels.Color(0, 150, 0));
@@ -1170,40 +701,6 @@ void setStoppedLED(bool on){
   pixels.show();
 }
 
-//if limit switch hit then stepper should move up.
-void doLimitLower(void){
-    lowerLimitReached = true;
-    //digitalWrite(SEN, LOW);   //enable stepper
-    enableStepper(true);
-    stepper.setSpeed(stepper_speed);    
-    stepper.step(800);
-    governor_pos = 0;       //this is our zero point
-    set_governor_pos = 0;
-//
-    SmState = STATE_STOPPED;
-
-}
-
-void doLimitUpper(void){
-  Serial.println("upper limit reached");
-}
-
-//RETURN: the number of steps required to move the governor a vertical distance (in mm) of dist_mm.
-//INPUT: The distance in mm that the governor should move. + upwards; - downwards
-float getStepsFromDistance(float dist_mm){
-  float num_full_turns = dist_mm / dist_one_rotation;  //dist in mm
-  float total_steps = num_full_turns*steps_in_one_rotation;
-
-  return total_steps;
-}
-
-void enableStepper(bool on){
-  if(on){
-    digitalWrite(SEN, LOW);
-  } else{
-    digitalWrite(SEN, HIGH);
-  }
-}
 
 //==================================================================================
 //======================TIMER INTERRUPT FUNCTIONS====================================
