@@ -1,6 +1,6 @@
 # pidcontroller
 
-MotorController contains the base motor controls for driving the motor forwards and backwards at certain speeds (input 0-255).
+The DCMotorControl library contains the basic motor functions for driving the motor forwards and backwards at certain speeds (input 0-255).
 
 Command list:
 
