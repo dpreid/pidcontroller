@@ -332,6 +332,8 @@ void Sm_State_PID_Speed(void){
 
 
 void Sm_State_Start_Calibration(void){
+
+  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE); 
   
   //doInterruptAB = false;
   doInterruptIndex = true;
@@ -420,6 +422,9 @@ void Sm_State_DC_Motor(void){
 //User sets the governor position that they want. Stepper steps until that position is reached. Limit switch
 //can stop the motion.
 void Sm_State_Configure(void){
+
+  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE); 
+  
   enableStepper(true);
   //digitalWrite(SEN, LOW);   //enable the stepper
   stepper.setSpeed(stepper_speed);
@@ -534,7 +539,7 @@ void setup() {
   attachEncoderInterrupts();
 
   //interruptsfor limit switches
-  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);
   //attachInterrupt(digitalPinToInterrupt(limitSwitchUpper), doLimitUpper, HIGH);   
 
   current_time_index = millis();   
@@ -1192,6 +1197,9 @@ void doLimitLower(void){
     governor_pos = 0;       //this is our zero point
     set_governor_pos = 0;
 //
+
+    detachInterrupt(digitalPinToInterrupt(limitSwitchLower));
+
     SmState = STATE_STOPPED;
 
 }
