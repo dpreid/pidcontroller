@@ -543,7 +543,7 @@ void setup() {
   previous_report_time = millis();
 
   Serial.setTimeout(50);
-  Serial.begin(115200);
+  Serial.begin(57600);
 
   startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
