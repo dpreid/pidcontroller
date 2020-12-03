@@ -460,8 +460,6 @@ void report_encoder(void)
 {
   unsigned long current_time = millis();
  if (current_time >= previous_report_time + report_interval){
-
-      detachEncoderInterrupts();
   
       if (encoderPlain){
         Serial.print("position = ");
@@ -481,15 +479,8 @@ void report_encoder(void)
 
       previous_report_time = current_time;
 
-      attachEncoderInterrupts();
     }
   
-}
-
-void detachEncoderInterrupts(void){
-  detachInterrupt(digitalPinToInterrupt(encoderPinA));
-  detachInterrupt(digitalPinToInterrupt(encoderPinB));
-  detachInterrupt(digitalPinToInterrupt(indexPin));
 }
 
 void attachEncoderInterrupts(void){
@@ -515,14 +506,14 @@ void doEncoderA() {
     }
 
   //TESTING UPDATING THE ANGULAR VELOCITY ON ENCODER INTERRUPT AS WELL
-  if(A_set){
-    current_time_encoder = micros();
-    if(current_time_encoder > previous_time_encoder){
-      encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
-      previous_time_encoder = current_time_encoder;
-      } 
-
-  }
+//  if(A_set){
+//    current_time_encoder = micros();
+//    if(current_time_encoder > previous_time_encoder){
+//      encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
+//      previous_time_encoder = current_time_encoder;
+//      } 
+//
+//  }
 
   encoderWrap();
 

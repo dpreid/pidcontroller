@@ -61,19 +61,14 @@ unsigned long current_time_encoder = 0;
 unsigned long previous_time_encoder = 0;
 unsigned long current_time_index = 0;
 unsigned long previous_time_index = 0;
-unsigned long min_rotation_time = 6;      //any time difference smaller than 6ms won't be used to calculate angular velocity
 
 //other user set values
-float set_position = 0;     //the position the user has set
 float set_speed = 0;        //user set position for PID_Speed mode and DC_Motor mode
 float Kp = 1.0;               //PID parameters
 float Ki = 0.0;
 float Kd = 0.0;
 
 //pid calculated values
-volatile float error = 0;
-volatile float previous_error = 0;
-volatile float previous_previous_error = 0;
 volatile float error_speed = 0;
 volatile float previous_error_speed = 0;
 volatile float previous_previous_error_speed = 0;
@@ -140,7 +135,6 @@ typedef enum
   STATE_AWAITING_STOP,  //checking if the motor has stopped
   STATE_STOPPED,        //no drive to motor
   STATE_PID_SPEED_MODE, //pid controller mode - 1st order, speed functions
-  STATE_PID_POSITION_MODE,  //pid controller - 2nd order, position functions
   STATE_DC_MOTOR_MODE,    //regular dc motor functions with no PID controller
   STATE_CONFIGURE, //mode for changing position of the governor.
   STATE_RESET_HEIGHT  //resets the governor height to 0.
@@ -153,7 +147,6 @@ void Sm_State_Zero(void);
 void Sm_State_Awaiting_Stop(void);
 void Sm_State_Stopped(void);
 void Sm_State_PID_Speed(void);
-void Sm_State_PID_Position(void);
 void Sm_State_DC_Motor(void);
 void Sm_State_Configure(void);
 void Sm_State_Reset_Height(void);
@@ -179,13 +172,12 @@ StateMachineType StateMachine[] =
   {STATE_AWAITING_STOP, Sm_State_Awaiting_Stop},
   {STATE_STOPPED, Sm_State_Stopped},
   {STATE_PID_SPEED_MODE, Sm_State_PID_Speed},
-  {STATE_PID_POSITION_MODE, Sm_State_PID_Position},
   {STATE_DC_MOTOR_MODE, Sm_State_DC_Motor},
   {STATE_CONFIGURE, Sm_State_Configure},
   {STATE_RESET_HEIGHT, Sm_State_Reset_Height}
 };
  
-int NUM_STATES = 9;
+int NUM_STATES = 8;
 
 /**
  * Stores the current state of the state machine
@@ -201,7 +193,7 @@ void Sm_State_Stopped(void){
   //doInterruptAB = false;
   doInterruptIndex = true;       
   lowerLimitReached = false;    //CHECK THIS
-  set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
+  
   set_speed = 0;
   encoderAngVel = 0;
   
@@ -246,23 +238,6 @@ void Sm_State_Awaiting_Stop(void){
   }
 
   SmState = STATE_STOPPED;    //transition to the stopped state.
-}
-
-void Sm_State_PID_Position(void){
-    //doInterruptAB = true;
-    doInterruptIndex = true;
-
-    if(PID_signal > 255){
-      motor.drive(255);
-    } else if(PID_signal < -255){
-      motor.drive(-255);
-    } else{
-      motor.drive(PID_signal);
-    }
-  
-  report_encoder();
-  SmState = STATE_PID_POSITION_MODE;
-
 }
 
 void Sm_State_PID_Speed(void){
@@ -412,9 +387,7 @@ void Sm_Run(void)
 
 //This function is run on a timer interrupt defined by pid_interval/timer_interrupt_freq.
 void TimerInterrupt(void){
-  if(SmState == STATE_PID_POSITION_MODE){
-     calculatePositionPID();
-  } else if(SmState == STATE_PID_SPEED_MODE){
+  if(SmState == STATE_PID_SPEED_MODE){
     calculateSpeedPID();
   } 
 }
@@ -478,25 +451,7 @@ StateType readSerialJSON(StateType SmState){
     
     const char* cmd = doc["cmd"];
 
-    if(strcmp(cmd, "set_position")==0){
-      if(SmState == STATE_PID_POSITION_MODE){
-        float new_position = doc["param"];
-        if(new_position >= -position_limit && new_position <= position_limit){
-          resetPIDSignal();
-          
-          set_position = new_position;
-        } else{
-//          Serial.print("position needs to be between -");
-//          Serial.print(position_limit);
-//          Serial.print(" and ");
-//          Serial.println(position_limit);
-        }
-      } else{
-          Serial.println("In wrong state to set position");
-      }
-      
-      
-  } else if(strcmp(cmd, "set_speed")==0){
+    if(strcmp(cmd, "set_speed")==0){
       if(SmState == STATE_PID_SPEED_MODE || SmState == STATE_DC_MOTOR_MODE){
         float new_speed = doc["param"];
         
@@ -517,9 +472,6 @@ StateType readSerialJSON(StateType SmState){
         if(strcmp(new_mode, "PID_SPEED_MODE") == 0){
         SmState = STATE_PID_SPEED_MODE;
         } 
-        else if(strcmp(new_mode, "PID_POSITION_MODE") == 0){
-          SmState = STATE_PID_POSITION_MODE;
-        }
         else if(strcmp(new_mode, "DC_MOTOR_MODE") == 0){
           SmState = STATE_DC_MOTOR_MODE;
         }
@@ -584,9 +536,6 @@ void resetPIDSignal(void){
   PID_signal = 0;
   previous_PID_signal = 0;
   previous_previous_PID_signal = 0;
-  error = 0;
-  previous_error = 0;
-  previous_previous_error = 0;
 
   error_speed = 0;
   previous_error_speed = 0;
@@ -739,35 +688,35 @@ void encoderWrap(void){
 
 
 //DISCRETE TIME VERSION
-void calculatePositionPID(void){
-    previous_previous_error = previous_error;
-    previous_error = error;
-    
-  float not_through_wrap_error = encoderPos - set_position;
-  float mag = abs(not_through_wrap_error);
-  int dir = not_through_wrap_error / mag;    //should be +1 or -1.
-  
-  float through_wrap_error = 2*position_limit - abs(encoderPos) - abs(set_position);
-
-  if(abs(not_through_wrap_error) <= through_wrap_error){
-    error = not_through_wrap_error;
-  } else {
-    error = -1*dir*through_wrap_error;
-  }
-  //convert error to an angular error in deg
-  error = error*180/position_limit;
-  
-  
-  float delta_t = pid_interval/1000.0;
-  float Ti = Kp/Ki;
-  float Td = Kd/Kp;
-  
- float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error - 2*previous_error + previous_previous_error));
-
-  PID_signal += new_signal;
-    
-
-}
+//void calculatePositionPID(void){
+//    previous_previous_error = previous_error;
+//    previous_error = error;
+//    
+//  float not_through_wrap_error = encoderPos - set_position;
+//  float mag = abs(not_through_wrap_error);
+//  int dir = not_through_wrap_error / mag;    //should be +1 or -1.
+//  
+//  float through_wrap_error = 2*position_limit - abs(encoderPos) - abs(set_position);
+//
+//  if(abs(not_through_wrap_error) <= through_wrap_error){
+//    error = not_through_wrap_error;
+//  } else {
+//    error = -1*dir*through_wrap_error;
+//  }
+//  //convert error to an angular error in deg
+//  error = error*180/position_limit;
+//  
+//  
+//  float delta_t = pid_interval/1000.0;
+//  float Ti = Kp/Ki;
+//  float Td = Kd/Kp;
+//  
+// float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error - 2*previous_error + previous_previous_error));
+//
+//  PID_signal += new_signal;
+//    
+//
+//}
 
 //DISCRETE TIME VERSION
 void calculateSpeedPID(void){
