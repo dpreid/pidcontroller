@@ -43,7 +43,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define limitSwitchLower 21
 
 bool debug = false;
-unsigned long report_interval = 10;   //ms
+unsigned long report_interval = 50;   //ms
 unsigned long previous_report_time = 0;
 bool encoderPlain = false;
 
@@ -281,6 +281,8 @@ void Sm_State_PID_Speed(void){
 
 
 void Sm_State_Start_Calibration(void){
+
+  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE); 
   
   //doInterruptAB = false;
   doInterruptIndex = true;
@@ -351,6 +353,9 @@ void Sm_State_DC_Motor(void){
 //User sets the governor position that they want. Stepper steps until that position is reached. Limit switch
 //can stop the motion.
 void Sm_State_Configure(void){
+
+  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE); 
+  
   enableStepper(true);
   stepper.setSpeed(stepper_speed);
   
@@ -376,6 +381,8 @@ void Sm_State_Configure(void){
 }
 
 void Sm_State_Reset_Height(void){
+  
+  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE); 
   
    enableStepper(true);
     while(!lowerLimitReached){
@@ -438,15 +445,7 @@ void setup() {
   //setup limit switches
   pinMode(limitSwitchLower, INPUT_PULLUP);
   
-  // encoder pin on interrupt (pin 2)
-  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
-  // encoder pin on interrupt (pin 3)
-  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
-  // encoder pin on interrupt (pin 11)
-  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
-
-  //interruptsfor limit switches
-  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);  
+  attachEncoderInterrupts(); 
 
   current_time_index = millis();   
   previous_time_index = millis();
@@ -597,8 +596,11 @@ void resetPIDSignal(void){
 //outputs encoder position and ang vel to serial bus.
 void report_encoder(void)
 {
+  unsigned long current_time = millis();
+ if (current_time >= previous_report_time + report_interval){
+
+      detachEncoderInterrupts();
   
- if (millis() >= previous_report_time + report_interval){
       if (encoderPlain){
         Serial.print("position = ");
         Serial.println(encoderPos);
@@ -611,13 +613,27 @@ void report_encoder(void)
         Serial.print(",\"enc_ang_vel\":");
         Serial.print(encoderAngVel);
         Serial.print(",\"time\":");
-        Serial.print(millis());  
+        Serial.print(current_time);  
         Serial.println("}");
       }
 
-      previous_report_time = millis();
+      previous_report_time = current_time;
+
+      attachEncoderInterrupts();
     }
   
+}
+
+void detachEncoderInterrupts(void){
+  detachInterrupt(digitalPinToInterrupt(encoderPinA));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB));
+  detachInterrupt(digitalPinToInterrupt(indexPin));
+}
+
+void attachEncoderInterrupts(void){
+  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 }
 
 // Interrupt on A changing state
@@ -856,6 +872,9 @@ void doLimitLower(void){
     governor_pos = 0;       //this is our zero point
     set_governor_pos = 0;
 //
+
+    detachInterrupt(digitalPinToInterrupt(limitSwitchLower));
+
     SmState = STATE_STOPPED;
 
 }

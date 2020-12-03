@@ -10,7 +10,6 @@
  * Timer interrupt functions from https://github.com/nebs/arduino-zero-timer-demo/
  */
 #include <Adafruit_NeoPixel.h>
-#include <Stepper.h>
 #include <MotorControllerPmodHB3.h>
 
 #include "ArduinoJson-v6.9.1.h"
@@ -28,8 +27,9 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define indexPin 11
 
 bool debug = false;
-unsigned long report_interval = 10;   //ms
+unsigned long report_interval = 50;   //ms
 unsigned long previous_report_time = 0;
+unsigned long previous_data_time = 0;
 bool encoderPlain = false;
 
 //for both PID modes and error calculations
@@ -87,14 +87,12 @@ MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 float zero_error = 10;
 
-int pid_interval = 3;       //ms, for timer interrupt
+int pid_interval = 10;       //ms, for timer interrupt    !!!!!!*********************************
 
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 
 bool doInterruptAB = true;
 bool doInterruptIndex = true;
-
-bool lowerLimitReached = false;
 
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
@@ -161,7 +159,6 @@ StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
 void Sm_State_Stopped(void){  
   //doInterruptAB = false;
   doInterruptIndex = true;       
-  lowerLimitReached = false;    //CHECK THIS
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
   set_speed = 0;
   encoderAngVel = 0;
@@ -315,12 +312,7 @@ void setup() {
 
   pixels.begin(); // INITIALIZE NeoPixel
   
-  // encoder pin on interrupt (pin 2)
-  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
-  // encoder pin on interrupt (pin 3)
-  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
-  // encoder pin on interrupt (pin 11)
-  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+  attachEncoderInterrupts();
 
   current_time_index = millis();   
   previous_time_index = millis();
@@ -328,7 +320,7 @@ void setup() {
   previous_report_time = millis();
 
   Serial.setTimeout(50);
-  Serial.begin(115200);
+  Serial.begin(57600);
 
   startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
@@ -452,27 +444,45 @@ void resetPIDSignal(void){
 //outputs encoder position and ang vel to serial bus.
 void report_encoder(void)
 {
+  unsigned long current_time = millis();
   
- if (millis() >= previous_report_time + report_interval){
-      if (encoderPlain){
-        Serial.print("position = ");
-        Serial.println(encoderPos);
-        Serial.print("ang vel = ");
-        Serial.println(encoderAngVel);
-      }
-      else{
-        Serial.print("{\"enc\":");
-        Serial.print(encoderPos);
-        Serial.print(",\"enc_ang_vel\":");
-        Serial.print(encoderAngVel);
-        Serial.print(",\"time\":");
-        Serial.print(millis());  
-        Serial.println("}");
-      }
+   if (current_time >= previous_report_time + report_interval){
 
-      previous_report_time = millis();
-    }
+        detachEncoderInterrupts();
+    
+        if (encoderPlain){
+          Serial.print("position = ");
+          Serial.println(encoderPos);
+          Serial.print("ang vel = ");
+          Serial.println(encoderAngVel);
+        }
+        else{
+          Serial.print("{\"enc\":");
+          Serial.print(encoderPos);
+          Serial.print(",\"enc_ang_vel\":");
+          Serial.print(encoderAngVel);
+          Serial.print(",\"time\":");
+          Serial.print(current_time);  
+          Serial.println("}");
+        }
   
+        previous_report_time = current_time;
+
+        attachEncoderInterrupts();
+      }
+  
+}
+
+void detachEncoderInterrupts(void){
+  detachInterrupt(digitalPinToInterrupt(encoderPinA));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB));
+  detachInterrupt(digitalPinToInterrupt(indexPin));
+}
+
+void attachEncoderInterrupts(void){
+  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 }
 
 // Interrupt on A changing state
@@ -491,7 +501,6 @@ void doEncoderA() {
       encoder_direction = 1;
     }
 
-  //TESTING UPDATING THE ANGULAR VELOCITY ON ENCODER INTERRUPT AS WELL
   if(A_set){
     current_time_encoder = micros();
     if(current_time_encoder > previous_time_encoder){
@@ -526,11 +535,11 @@ void doIndexPin(void){
   if(doInterruptIndex){
     //get direction of rotation
     
-    if(encoderPos - encoderPosLast >= 0){
-      encoder_direction_index = -1;
-    } else{
-      encoder_direction_index = 1;
-    }
+//    if(encoderPos - encoderPosLast >= 0){
+//      encoder_direction_index = -1;
+//    } else{
+//      encoder_direction_index = 1;
+//    }
   
 //    previous_time_index = current_time_index;
 //    current_time_index = millis();

@@ -56,7 +56,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define limitSwitchUpper 19
 
 bool debug = false;
-unsigned long report_interval = 10;   //ms
+unsigned long report_interval = 50;   //ms
 unsigned long previous_report_time = 0;
 bool encoderPlain = false;
 
@@ -531,12 +531,7 @@ void setup() {
   
   //digitalWrite(ledPowerOn, HIGH);   //just to show that arduino is on.
   
-  // encoder pin on interrupt (pin 2)
-  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
-  // encoder pin on interrupt (pin 3)
-  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
-  // encoder pin on interrupt (pin 11)
-  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+  attachEncoderInterrupts();
 
   //interruptsfor limit switches
   attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);
@@ -693,8 +688,11 @@ void resetPIDSignal(void){
 //outputs encoder position and ang vel to serial bus.
 void report_encoder(void)
 {
+  unsigned long current_time = millis();
+ if (current_time >= previous_report_time + report_interval){
+
+      detachEncoderInterrupts();
   
- if (millis() >= previous_report_time + report_interval){
       if (encoderPlain){
         Serial.print("position = ");
         Serial.println(encoderPos);
@@ -707,32 +705,46 @@ void report_encoder(void)
         Serial.print(",\"enc_ang_vel\":");
         Serial.print(encoderAngVel);
         Serial.print(",\"time\":");
-        Serial.print(millis());  
+        Serial.print(current_time);  
         Serial.println("}");
       }
 
-      previous_report_time = millis();
+      previous_report_time = current_time;
+
+      attachEncoderInterrupts();
     }
   
 }
 
 //outputs encoder speed to serial bus.
-void report_encoder_speed(void){
-   if (millis() >= previous_report_time + report_interval){
-      if (encoderPlain){
-        Serial.print("ang vel = ");
-        Serial.println(encoderAngVel);
-      }
-      else{
-        Serial.print("{\"enc_ang_vel\":");
-        Serial.print(encoderAngVel);
-        Serial.print(",\"time\":");
-        Serial.print(millis());  
-        Serial.println("}");
-      }
+//void report_encoder_speed(void){
+//   if (millis() >= previous_report_time + report_interval){
+//      if (encoderPlain){
+//        Serial.print("ang vel = ");
+//        Serial.println(encoderAngVel);
+//      }
+//      else{
+//        Serial.print("{\"enc_ang_vel\":");
+//        Serial.print(encoderAngVel);
+//        Serial.print(",\"time\":");
+//        Serial.print(millis());  
+//        Serial.println("}");
+//      }
+//
+//      previous_report_time = millis();
+//    }
+//}
 
-      previous_report_time = millis();
-    }
+void detachEncoderInterrupts(void){
+  detachInterrupt(digitalPinToInterrupt(encoderPinA));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB));
+  detachInterrupt(digitalPinToInterrupt(indexPin));
+}
+
+void attachEncoderInterrupts(void){
+  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 }
 
 // Interrupt on A changing state

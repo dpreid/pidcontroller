@@ -32,7 +32,7 @@ volatile float set_arm_extension = 90.0;   //the position of the servo motor for
 #define indexPin 11
 
 bool debug = false;
-unsigned long report_interval = 10;   //ms
+unsigned long report_interval = 50;   //ms
 unsigned long previous_report_time = 0;
 bool encoderPlain = false;
 
@@ -334,12 +334,7 @@ void setup() {
 
   pixels.begin(); // INITIALIZE NeoPixel
   
-  // encoder pin on interrupt (pin 2)
-  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
-  // encoder pin on interrupt (pin 3)
-  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
-  // encoder pin on interrupt (pin 11)
-  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);  
+  attachEncoderInterrupts(); 
 
   current_time_index = millis();   
   previous_time_index = millis();
@@ -463,8 +458,11 @@ void resetPIDSignal(void){
 //outputs encoder position and ang vel to serial bus.
 void report_encoder(void)
 {
+  unsigned long current_time = millis();
+ if (current_time >= previous_report_time + report_interval){
+
+      detachEncoderInterrupts();
   
- if (millis() >= previous_report_time + report_interval){
       if (encoderPlain){
         Serial.print("position = ");
         Serial.println(encoderPos);
@@ -477,13 +475,27 @@ void report_encoder(void)
         Serial.print(",\"enc_ang_vel\":");
         Serial.print(encoderAngVel);
         Serial.print(",\"time\":");
-        Serial.print(millis());  
+        Serial.print(current_time);  
         Serial.println("}");
       }
 
-      previous_report_time = millis();
+      previous_report_time = current_time;
+
+      attachEncoderInterrupts();
     }
   
+}
+
+void detachEncoderInterrupts(void){
+  detachInterrupt(digitalPinToInterrupt(encoderPinA));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB));
+  detachInterrupt(digitalPinToInterrupt(indexPin));
+}
+
+void attachEncoderInterrupts(void){
+  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 }
 
 // Interrupt on A changing state
