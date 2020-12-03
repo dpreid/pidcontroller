@@ -68,6 +68,8 @@ volatile float encoderAngVel = 0;
 volatile int encoder_direction = 1;     //+1 CCW, -1 CW.
 volatile int encoder_direction_last = -1;
 volatile int encoder_direction_index = 1;   //the direction of rotation as the idnex pin is passed
+volatile int encoder_positive_count = 0;
+volatile int encoder_negative_count = 0;
 
 unsigned long current_time_encoder = 0;
 unsigned long previous_time_encoder = 0;
@@ -762,10 +764,22 @@ void doEncoderA() {
   encoderPos += (A_set != B_set) ? +1 : -1;
 
 
-  if(encoderPos - encoderPosLast >= 0){
+  if(encoderPos - encoderPosLast > 0){
+    encoder_positive_count++;
+    encoder_negative_count = 0;
+    if(encoder_positive_count >= 10){
       encoder_direction = -1;
-    } else{
-      encoder_direction = 1;
+      encoder_positive_count = 0;
+    }
+      
+    } else if(encoderPos - encoderPosLast < 0){
+      encoder_negative_count++;
+      encoder_positive_count = 0;
+      if(encoder_negative_count >= 10){
+        encoder_direction = 1;
+        encoder_negative_count = 0;
+      }
+      
     }
 
   //TESTING UPDATING THE ANGULAR VELOCITY ON ENCODER INTERRUPT AS WELL
