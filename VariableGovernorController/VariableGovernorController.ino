@@ -422,9 +422,9 @@ void TimerInterrupt(void){
 // SETUP AND LOOP==================================================================================
 void setup() {
   //setup encoder pins, pullup resistors on PCB
-  pinMode(encoderPinA, INPUT_PULLUP);
-  pinMode(encoderPinB, INPUT_PULLUP);
-  pinMode(indexPin, INPUT_PULLUP);
+  pinMode(encoderPinA, INPUT);
+  pinMode(encoderPinB, INPUT);
+  pinMode(indexPin, INPUT);
 
   pinMode(SEN, OUTPUT);
   enableStepper(false);
