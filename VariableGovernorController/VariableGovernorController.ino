@@ -106,6 +106,7 @@ float dist_one_rotation = 1.0;    //mm increase in height of lower governor posi
 long stepper_speed = 100;
 //Stepper stepper = Stepper(steps_in_one_rotation, SIN1, SIN2, SIN3, SIN4);
 Stepper stepper = Stepper(steps_in_one_rotation, SDIR, SSTP);
+float height_zero_error = 0.001;
 //======================================
 
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
@@ -119,6 +120,7 @@ bool doInterruptAB = true;
 bool doInterruptIndex = true;
 
 bool lowerLimitReached = false;
+bool isLimitInterruptAttached = false;
 
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
@@ -189,6 +191,10 @@ StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
 
 
 void Sm_State_Stopped(void){
+  if(isLimitInterruptAttached){
+    detachInterrupt(digitalPinToInterrupt(limitSwitchLower));
+    isLimitInterruptAttached = false;
+  }
   enableStepper(false);   
   //doInterruptAB = false;
   doInterruptIndex = true;       
@@ -259,7 +265,11 @@ void Sm_State_PID_Speed(void){
 
 void Sm_State_Start_Calibration(void){
 
-  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE); 
+  if(!isLimitInterruptAttached){
+    attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);
+    isLimitInterruptAttached = true;
+  }
+   
   
   //doInterruptAB = false;
   doInterruptIndex = true;
@@ -331,35 +341,42 @@ void Sm_State_DC_Motor(void){
 //can stop the motion.
 void Sm_State_Configure(void){
 
-  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE); 
+  if(!isLimitInterruptAttached){
+    attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);
+    isLimitInterruptAttached = true;
+  }
   
   enableStepper(true);
-  stepper.setSpeed(stepper_speed);
   
   float diff = set_governor_pos - governor_pos;
-  if(diff > 0){ 
+  
+  if(diff >= height_zero_error){ 
     //moving up
+    stepper.setSpeed(stepper_speed);
     stepper.step(1);
     governor_pos += dist_one_rotation / steps_in_one_rotation;
     
-  } else if(diff < 0){
+  } else if(diff <= -height_zero_error){
     //moving down
+    stepper.setSpeed(stepper_speed);
     stepper.step(-1);
     governor_pos -= dist_one_rotation / steps_in_one_rotation;
     
   } 
     //governor_pos = set_governor_pos;
-  if(diff <= 0.001 && diff >= -0.001) { //need to test this error allowance
+  if(diff <= height_zero_error && diff >= -height_zero_error) { //need to test this error allowance
     stepper.setSpeed(0);
-    SmState = STATE_STOPPED;
-  } else{
-    SmState = STATE_CONFIGURE;
-  }
+  } 
+
+  SmState = STATE_CONFIGURE;
 }
 
 void Sm_State_Reset_Height(void){
   
-  attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE); 
+  if(!isLimitInterruptAttached){
+    attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);
+    isLimitInterruptAttached = true;
+  }
   
    enableStepper(true);
     while(!lowerLimitReached){
@@ -837,8 +854,9 @@ void doLimitLower(void){
     governor_pos = 0;       //this is our zero point
     set_governor_pos = 0;
 //
-
-    detachInterrupt(digitalPinToInterrupt(limitSwitchLower));
+    
+    //detachInterrupt(digitalPinToInterrupt(limitSwitchLower));
+    //isLimitInterruptAttached = false;
 
     SmState = STATE_STOPPED;
 

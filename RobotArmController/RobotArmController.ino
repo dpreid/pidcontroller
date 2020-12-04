@@ -288,12 +288,20 @@ void Sm_State_Offset(void){
 
 //TRANSITION: CHANGE_ARM -> CHANGE_ARM
 void Sm_State_Change_Arm(void){
+
+  if(!servo.attached()){
+    servo.attach(SERVO);
+  }
+  
   //if the servo set position has changed since the last call to write then call write
   if(servo.read() != set_arm_extension){
       servo.write(set_arm_extension);
   }
-  
-  SmState = STATE_CHANGE_ARM;
+
+  servo.detach();
+
+  SmState = STATE_STOPPED;
+  //SmState = STATE_CHANGE_ARM;
 }
 
 //STATE MACHINE RUN FUNCTION
@@ -329,8 +337,8 @@ void setup() {
   pinMode(encoderPinB, INPUT);
   pinMode(indexPin, INPUT);
 
-  pinMode(SERVO, OUTPUT);
-  servo.attach(SERVO);
+  //pinMode(SERVO, OUTPUT);
+  //servo.attach(SERVO);
 
   pixels.begin(); // INITIALIZE NeoPixel
   
