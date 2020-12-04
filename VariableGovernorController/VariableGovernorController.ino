@@ -169,7 +169,6 @@ typedef struct
  */
 StateMachineType StateMachine[] =
 {
-  {STATE_CALIBRATE, Sm_State_Start_Calibration},
   {STATE_ZERO, Sm_State_Zero},
   {STATE_AWAITING_STOP, Sm_State_Awaiting_Stop},
   {STATE_STOPPED, Sm_State_Stopped},
@@ -179,7 +178,7 @@ StateMachineType StateMachine[] =
   {STATE_RESET_HEIGHT, Sm_State_Reset_Height}
 };
  
-int NUM_STATES = 8;
+int NUM_STATES = 7;
 
 /**
  * Stores the current state of the state machine
@@ -262,44 +261,6 @@ void Sm_State_PID_Speed(void){
   SmState = STATE_PID_SPEED_MODE;
 }
 
-
-void Sm_State_Start_Calibration(void){
-
-  if(!isLimitInterruptAttached){
-    attachInterrupt(digitalPinToInterrupt(limitSwitchLower), doLimitLower, CHANGE);
-    isLimitInterruptAttached = true;
-  }
-   
-  
-  //doInterruptAB = false;
-  doInterruptIndex = true;
-
-  bool index_state = led_index_on;
-  float starting_signal = 50;
-  while(index_state == led_index_on){
-    motor.drive(-encoder_direction_index * starting_signal);
-    starting_signal += 0.000001;
-  }
-
-  motor.brake();
-
-  encoderPos = 0;
-
-  delay(100);
-  
-  report_encoder();
-  if(encoderPos > zero_error || encoderPos < -zero_error){    //allowed calibration error
-    SmState = STATE_CALIBRATE;  
-  } else{
-    enableStepper(true);
-    while(!lowerLimitReached){
-      stepper.setSpeed(stepper_speed);
-      stepper.step(-1);
-    }
-    SmState = STATE_STOPPED;  
-  }
-  
-}
 
 void Sm_State_Zero(void){
   
@@ -494,9 +455,6 @@ StateType readSerialJSON(StateType SmState){
         }
         else if(strcmp(new_mode, "CONFIGURE") == 0){
           SmState = STATE_CONFIGURE;
-        }
-        else if(strcmp(new_mode, "CALIBRATE") == 0){
-          SmState = STATE_CALIBRATE;
         }
         else if(strcmp(new_mode, "ZERO") == 0){
           SmState = STATE_ZERO;
@@ -703,38 +661,6 @@ void encoderWrap(void){
       }
 }
 
-
-//DISCRETE TIME VERSION
-//void calculatePositionPID(void){
-//    previous_previous_error = previous_error;
-//    previous_error = error;
-//    
-//  float not_through_wrap_error = encoderPos - set_position;
-//  float mag = abs(not_through_wrap_error);
-//  int dir = not_through_wrap_error / mag;    //should be +1 or -1.
-//  
-//  float through_wrap_error = 2*position_limit - abs(encoderPos) - abs(set_position);
-//
-//  if(abs(not_through_wrap_error) <= through_wrap_error){
-//    error = not_through_wrap_error;
-//  } else {
-//    error = -1*dir*through_wrap_error;
-//  }
-//  //convert error to an angular error in deg
-//  error = error*180/position_limit;
-//  
-//  
-//  float delta_t = pid_interval/1000.0;
-//  float Ti = Kp/Ki;
-//  float Td = Kd/Kp;
-//  
-// float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error - 2*previous_error + previous_previous_error));
-//
-//  PID_signal += new_signal;
-//    
-//
-//}
-
 //DISCRETE TIME VERSION
 void calculateSpeedPID(void){
     previous_previous_error_speed = previous_error_speed;
@@ -822,23 +748,13 @@ void setIndexLEDs(bool value){
 
 void setStoppedLED(bool on){
   if(on){
-    pixels.setPixelColor(8, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(9, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(10, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(11, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(12, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(13, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(14, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(15, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(3, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(4, pixels.Color(150, 0, 0));
+    
   } else{
-    pixels.setPixelColor(8, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(9, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(10, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(11, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(12, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(13, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(14, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(15, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(3, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(4, pixels.Color(0, 0, 0));
+    
   }
 
   pixels.show();
