@@ -161,6 +161,10 @@ StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
 
 //TRANSITION: Stopped -> Stopped
 void Sm_State_Stopped(void){  
+
+  if(servo.attached()){
+    servo.detach();
+  }
   //doInterruptAB = false;
   doInterruptIndex = true;       
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
@@ -298,10 +302,10 @@ void Sm_State_Change_Arm(void){
       servo.write(set_arm_extension);
   }
 
-  servo.detach();
+  //servo.detach();
 
-  SmState = STATE_STOPPED;
-  //SmState = STATE_CHANGE_ARM;
+  //SmState = STATE_STOPPED;
+  SmState = STATE_CHANGE_ARM;
 }
 
 //STATE MACHINE RUN FUNCTION
