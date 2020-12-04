@@ -132,7 +132,6 @@ float timer_interrupt_freq = 1000.0/pid_interval;
  */
 typedef enum
 {
-  STATE_CALIBRATE,      //state for resetting the governor to zero angle and zero height
   STATE_ZERO,           //zeroes the angle without changing governor height
   STATE_AWAITING_STOP,  //checking if the motor has stopped
   STATE_STOPPED,        //no drive to motor
@@ -144,7 +143,6 @@ typedef enum
 
 //state Machine function prototypes
 //these are the functions that run whilst in each respective state.
-void Sm_State_Start_Calibration(void);
 void Sm_State_Zero(void);
 void Sm_State_Awaiting_Stop(void);
 void Sm_State_Stopped(void);
@@ -190,10 +188,12 @@ StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
 
 
 void Sm_State_Stopped(void){
+  
   if(isLimitInterruptAttached){
     detachInterrupt(digitalPinToInterrupt(limitSwitchLower));
     isLimitInterruptAttached = false;
   }
+  
   enableStepper(false);   
   //doInterruptAB = false;
   doInterruptIndex = true;       
