@@ -32,7 +32,7 @@ volatile float set_arm_extension = 90.0;   //the position of the servo motor for
 #define indexPin 11
 
 bool debug = false;
-unsigned long report_interval = 50;   //ms
+unsigned long report_interval = 10;   //ms
 unsigned long previous_report_time = 0;
 bool encoderPlain = false;
 

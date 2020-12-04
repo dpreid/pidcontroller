@@ -27,7 +27,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define indexPin 11
 
 bool debug = false;
-unsigned long report_interval = 50;   //ms
+unsigned long report_interval = 10;   //ms
 unsigned long previous_report_time = 0;
 unsigned long previous_data_time = 0;
 bool encoderPlain = false;
