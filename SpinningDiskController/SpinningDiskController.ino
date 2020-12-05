@@ -88,7 +88,7 @@ MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 float zero_error = 10;
 
-int pid_interval = 10;       //ms, for timer interrupt    !!!!!!*********************************
+int pid_interval = 20;       //ms, for timer interrupt    !!!!!!*********************************
 
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 

@@ -39,20 +39,11 @@ bool encoderPlain = false;
 //for both PID modes and error calculations
 volatile int encoderPos = 0;
 volatile int encoderPosLast = 0;
-volatile float encoderAngVel = 0;
-volatile int encoder_direction = 1;     //+1 CCW, -1 CW.
-volatile int encoder_direction_last = -1;
 volatile int encoder_direction_index = 1;
-
-unsigned long current_time_encoder = 0;
-unsigned long previous_time_encoder = 0;
-unsigned long current_time_index = 0;
-unsigned long previous_time_index = 0;
-unsigned long min_rotation_time = 6;      //any time difference smaller than 6ms won't be used to calculate angular velocity
 
 //other user set values
 float set_position = 0;     //the position the user has set
-float set_speed = 0;        //user set position for PID_Speed mode and DC_Motor mode
+
 float Kp = 1.0;               //PID parameters
 float Ki = 0.0;
 float Kd = 0.0;
@@ -91,12 +82,10 @@ int position_limit = 200;   //the soft position limit either side of the zero po
 float zero_error = 10;
 float zero_offset = -200;    //the encoderPos difference between index and digger arm 0 position
 
-int pid_interval = 3;       //ms, for timer interrupt
+int pid_interval = 20;       //ms, for timer interrupt
 
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 
-bool doInterruptAB = false;
-bool doInterruptIndex = false;
 
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
@@ -165,11 +154,8 @@ void Sm_State_Stopped(void){
   if(servo.attached()){
     servo.detach();
   }
-  //doInterruptAB = false;
-  doInterruptIndex = true;       
+       
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
-  set_speed = 0;
-  encoderAngVel = 0;
  
   report_encoder();
   SmState = STATE_STOPPED;
@@ -199,8 +185,6 @@ void Sm_State_Awaiting_Stop(void){
       else{
         Serial.print("{\"awaiting_stop\":true,\"enc\":");
         Serial.print(encoderPos);
-        Serial.print(",\"enc_ang_vel\":");
-        Serial.print(encoderAngVel);
         Serial.print(",\"sameCount\":");
         Serial.print(sameCount);
         Serial.print(",\"time\":");
@@ -217,8 +201,6 @@ void Sm_State_Awaiting_Stop(void){
 
 //TRANSITION: PID_POSITION -> PID_POSITION
 void Sm_State_PID_Position(void){
-    //doInterruptAB = true;
-    doInterruptIndex = true;
 
     if(PID_signal > 255){
       motor.drive(255);
@@ -235,9 +217,6 @@ void Sm_State_PID_Position(void){
 
 //TRANSITION: ZERO -> OFFSET
 void Sm_State_Zero(void){
-  
-  //doInterruptAB = false;
-  doInterruptIndex = true;
 
   bool index_state = led_index_on;
   float starting_signal = 50;
@@ -264,8 +243,6 @@ void Sm_State_Zero(void){
 //TRANSITION: OFFSET -> STOPPED
 void Sm_State_Offset(void){
   //enter this state with the index pin having been zeroed and encoder position set to zero within a zero_error
-  //doInterruptAB = false;
-  doInterruptIndex = true;
 
   bool index_state = led_index_on;
   float starting_signal = 50;
@@ -296,15 +273,13 @@ void Sm_State_Change_Arm(void){
   if(!servo.attached()){
     servo.attach(SERVO);
   }
-  
+
   //if the servo set position has changed since the last call to write then call write
   if(servo.read() != set_arm_extension){
       servo.write(set_arm_extension);
+      delay(100);
   }
 
-  //servo.detach();
-
-  //SmState = STATE_STOPPED;
   SmState = STATE_CHANGE_ARM;
 }
 
@@ -332,24 +307,19 @@ void TimerInterrupt(void){
 
 // SETUP AND LOOP==================================================================================
 void setup() {
-  //setup encoder pins
-//  pinMode(encoderPinA, INPUT_PULLUP);   //pullup resistors not on board
-//  pinMode(encoderPinB, INPUT_PULLUP);
-//  pinMode(indexPin, INPUT_PULLUP);
+  
+  servo.attach(SERVO);
+  servo.write(set_arm_extension);
+  delay(1000);
+  servo.detach();
 
   pinMode(encoderPinA, INPUT);
   pinMode(encoderPinB, INPUT);
   pinMode(indexPin, INPUT);
 
-  //pinMode(SERVO, OUTPUT);
-  //servo.attach(SERVO);
-
   pixels.begin(); // INITIALIZE NeoPixel
   
   attachEncoderInterrupts(); 
-
-  current_time_index = millis();   
-  previous_time_index = millis();
 
   previous_report_time = millis();
 
@@ -476,14 +446,10 @@ void report_encoder(void)
       if (encoderPlain){
         Serial.print("position = ");
         Serial.println(encoderPos);
-        Serial.print("ang vel = ");
-        Serial.println(encoderAngVel);
       }
       else{
         Serial.print("{\"enc\":");
         Serial.print(encoderPos);
-        Serial.print(",\"enc_ang_vel\":");
-        Serial.print(encoderAngVel);
         Serial.print(",\"time\":");
         Serial.print(current_time);  
         Serial.println("}");
@@ -502,30 +468,12 @@ void attachEncoderInterrupts(void){
 }
 
 // Interrupt on A changing state
-//CURRENTLY ALWAYS DOING ENCODER INTERRUPTS IN ORDER TO GET DIRECTION
-//Encoder A is used to calculate angular speed in rpm as well as new position
 void doEncoderA() {
+  
   A_set = digitalRead(encoderPinA) == HIGH;
   // and adjust counter + if A leads B
   encoderPosLast = encoderPos;
   encoderPos += (A_set != B_set) ? +1 : -1;
-
-
-  if(encoderPos - encoderPosLast >= 0){
-      encoder_direction = -1;
-    } else{
-      encoder_direction = 1;
-    }
-
-  //TESTING UPDATING THE ANGULAR VELOCITY ON ENCODER INTERRUPT AS WELL
-//  if(A_set){
-//    current_time_encoder = micros();
-//    if(current_time_encoder > previous_time_encoder){
-//      encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
-//      previous_time_encoder = current_time_encoder;
-//      } 
-//
-//  }
 
   encoderWrap();
 
@@ -534,47 +482,27 @@ void doEncoderA() {
 
 // Interrupt on B changing state
 void doEncoderB() {
-  //if(doInterruptAB){
- 
+  
   B_set = digitalRead(encoderPinB) == HIGH;
   // and adjust counter + if B follows A
   encoderPosLast = encoderPos;
   encoderPos += (A_set == B_set) ? +1 : -1;
   encoderWrap();
 
-  
-  //}
 }
 
 //ENCODER DIRECTION IS ONLY NECESSARY FOR CALCULATING ANG VEL, SO ONLY NEEDS TO BE CORRECT WHEN
 //INDEX PIN TRIGGERS. Error in direction on wrap is OK....?
 void doIndexPin(void){
-  if(doInterruptIndex){
-    //get direction of rotation
-    
+    //get direction of rotation through index position
     if(encoderPos - encoderPosLast >= 0){
       encoder_direction_index = -1;
     } else{
       encoder_direction_index = 1;
     }
-  
-//    previous_time_index = current_time_index;
-//    current_time_index = millis();
-//
-//    if(current_time_index >= previous_time_index + min_rotation_time){
-//      encoderAngVel = encoder_direction * 60000.0/(current_time_index - previous_time_index);    //rpm
-//    }
     
-
     led_index_on = !led_index_on;
     setIndexLEDs(led_index_on);
-    //digitalWrite(ledIndex, led_index_on);
-    if(encoder_direction / encoder_direction_last < 0){
-      setRotationLEDs(encoderAngVel);  
-    }
-
-    encoder_direction_last = encoder_direction;
-  }
   
 }
 
@@ -617,62 +545,6 @@ void calculatePositionPID(void){
 
 }
 
-
-void setStepperLEDs(float value){
-  if(value > 0){
-    pixels.setPixelColor(5, pixels.Color(0, 0, 150));
-    pixels.setPixelColor(6, pixels.Color(0, 0, 150));
-    pixels.setPixelColor(7, pixels.Color(0, 0, 150));
-    pixels.setPixelColor(0, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(2, pixels.Color(0, 0, 0));
-    
-  } else if (value < 0){
-    pixels.setPixelColor(5, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(6, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(7, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(0, pixels.Color(0, 0, 150));
-    pixels.setPixelColor(1, pixels.Color(0, 0, 150));
-    pixels.setPixelColor(2, pixels.Color(0, 0, 150));
-  } else{
-    pixels.setPixelColor(5, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(6, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(7, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(0, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(2, pixels.Color(0, 0, 0));
-  }
-    pixels.show();
-}
-
-void setRotationLEDs(float value){
-  //pixels.clear();
-  if(value > 0){
-    pixels.setPixelColor(5, pixels.Color(0, 150, 0));
-    pixels.setPixelColor(6, pixels.Color(0, 150, 0));
-    pixels.setPixelColor(7, pixels.Color(0, 150, 0));
-    pixels.setPixelColor(0, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(2, pixels.Color(0, 0, 0));
-    
-  } else if (value < 0){
-    pixels.setPixelColor(5, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(6, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(7, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(0, pixels.Color(0, 150, 0));
-    pixels.setPixelColor(1, pixels.Color(0, 150, 0));
-    pixels.setPixelColor(2, pixels.Color(0, 150, 0));
-  } else{
-    pixels.setPixelColor(5, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(6, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(7, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(0, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(1, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(2, pixels.Color(0, 0, 0));
-  }
-    pixels.show();
-}
-
 void setIndexLEDs(bool value){
   //pixels.clear();
 
@@ -688,23 +560,23 @@ void setIndexLEDs(bool value){
 
 void setStoppedLED(bool on){
   if(on){
-    pixels.setPixelColor(8, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(9, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(10, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(11, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(12, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(13, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(14, pixels.Color(150, 0, 0));
-    pixels.setPixelColor(15, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(3, pixels.Color(150, 0, 0));
+    pixels.setPixelColor(4, pixels.Color(150, 0, 0));
   } else{
-    pixels.setPixelColor(8, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(9, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(10, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(11, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(12, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(13, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(14, pixels.Color(0, 0, 0));
-    pixels.setPixelColor(15, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(3, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(4, pixels.Color(0, 0, 0));
+  }
+
+  pixels.show();
+}
+
+void setChangingArmLEDs(bool on){
+  if(on){
+    pixels.setPixelColor(3, pixels.Color(0, 150, 0));
+    pixels.setPixelColor(4, pixels.Color(0, 150, 0));
+  } else{
+    pixels.setPixelColor(3, pixels.Color(0, 0, 0));
+    pixels.setPixelColor(4, pixels.Color(0, 0, 0));
   }
 
   pixels.show();

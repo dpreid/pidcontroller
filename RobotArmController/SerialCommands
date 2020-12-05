@@ -8,4 +8,4 @@
 
 
 
-{"cmd":"set_parameters","Kp":1.0, "Ki":0, "Kd":0, "dt":3}	//dt in ms
+{"cmd":"set_parameters","Kp":1.0, "Ki":0, "Kd":0, "dt":20}	//dt in ms
