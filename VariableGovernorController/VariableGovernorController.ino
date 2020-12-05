@@ -116,9 +116,6 @@ int pid_interval = 20;       //ms, for timer interrupt
 
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 
-bool doInterruptAB = true;
-bool doInterruptIndex = true;
-
 bool lowerLimitReached = false;
 bool isLimitInterruptAttached = false;
 
@@ -194,9 +191,7 @@ void Sm_State_Stopped(void){
     isLimitInterruptAttached = false;
   }
   
-  enableStepper(false);   
-  //doInterruptAB = false;
-  doInterruptIndex = true;       
+  enableStepper(false);         
   lowerLimitReached = false;    //CHECK THIS
   
   set_speed = 0;
@@ -246,9 +241,7 @@ void Sm_State_Awaiting_Stop(void){
 }
 
 void Sm_State_PID_Speed(void){
-    //doInterruptAB = false;
-    doInterruptIndex = true;
-    
+   
     if(PID_signal > 255){
       motor.drive(255);
     } else if(PID_signal < -255){
@@ -263,9 +256,6 @@ void Sm_State_PID_Speed(void){
 
 
 void Sm_State_Zero(void){
-  
-  //doInterruptAB = false;
-  doInterruptIndex = true;
 
   bool index_state = led_index_on;
   float starting_signal = 50;
@@ -290,9 +280,6 @@ void Sm_State_Zero(void){
 
 void Sm_State_DC_Motor(void){
   motor.drive(set_speed);
-
-  //doInterruptAB = false;
-  doInterruptIndex = true;
   
   report_encoder();
   SmState = STATE_DC_MOTOR_MODE;
@@ -563,7 +550,6 @@ void attachEncoderInterrupts(void){
 }
 
 // Interrupt on A changing state
-//CURRENTLY ALWAYS DOING ENCODER INTERRUPTS IN ORDER TO GET DIRECTION
 //Encoder A is used to calculate angular speed in rpm as well as new position
 void doEncoderA() {
   A_set = digitalRead(encoderPinA) == HIGH;
@@ -590,9 +576,6 @@ void doEncoderA() {
       
     }
 
-  
-
-  //TESTING UPDATING THE ANGULAR VELOCITY ON ENCODER INTERRUPT AS WELL
   if(A_set){
     current_time_encoder = micros();
     if(current_time_encoder > previous_time_encoder){
@@ -609,7 +592,6 @@ void doEncoderA() {
 
 // Interrupt on B changing state
 void doEncoderB() {
-  //if(doInterruptAB){
  
   B_set = digitalRead(encoderPinB) == HIGH;
   // and adjust counter + if B follows A
@@ -617,39 +599,28 @@ void doEncoderB() {
   encoderPos += (A_set == B_set) ? +1 : -1;
   //encoderWrap();
 
-  
-  //}
 }
 
 //ENCODER DIRECTION IS ONLY NECESSARY FOR CALCULATING ANG VEL, SO ONLY NEEDS TO BE CORRECT WHEN
 //INDEX PIN TRIGGERS. Error in direction on wrap is OK....?
 void doIndexPin(void){
-  if(doInterruptIndex){
+
     //get direction of rotation as passes through index
-    
     if(encoderPos - encoderPosLast >= 0){
       encoder_direction_index = -1;
     } else{
       encoder_direction_index = 1;
     }
-  
-//    previous_time_index = current_time_index;
-//    current_time_index = millis();
-//
-//    if(current_time_index >= previous_time_index + min_rotation_time){
-//      encoderAngVel = encoder_direction * 60000.0/(current_time_index - previous_time_index);    //rpm
-//    }
-    
 
     led_index_on = !led_index_on;
     setIndexLEDs(led_index_on);
-    //digitalWrite(ledIndex, led_index_on);
-    if(encoder_direction / encoder_direction_last < 0){
+    
+    if(encoder_direction_index / encoder_direction_last < 0){
       setRotationLEDs(encoderAngVel);  
     }
 
-    encoder_direction_last = encoder_direction;
-  }
+    encoder_direction_last = encoder_direction_index;
+  
   
 }
 

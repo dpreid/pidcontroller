@@ -92,8 +92,6 @@ int pid_interval = 20;       //ms, for timer interrupt    !!!!!!****************
 
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 
-bool doInterruptAB = true;
-bool doInterruptIndex = true;
 
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
@@ -154,9 +152,7 @@ StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
 //DEFINE STATE MACHINE FUNCTIONS================================================================
 
 
-void Sm_State_Stopped(void){  
-  //doInterruptAB = false;
-  doInterruptIndex = true;       
+void Sm_State_Stopped(void){        
 
   set_speed = 0;
   encoderAngVel = 0;
@@ -205,9 +201,6 @@ void Sm_State_Awaiting_Stop(void){
 }
 
 void Sm_State_PID_Speed(void){
-
-    //doInterruptAB = false;
-    doInterruptIndex = true;
     
     if(PID_signal > 255){
       motor.drive(255);
@@ -222,9 +215,6 @@ void Sm_State_PID_Speed(void){
 }
 
 void Sm_State_Zero(void){
-  
-  //doInterruptAB = false;
-  doInterruptIndex = true;
 
   bool index_state = led_index_on;
   float starting_signal = 50;
@@ -250,9 +240,6 @@ void Sm_State_Zero(void){
 void Sm_State_DC_Motor(void){
   
   motor.drive(set_speed);
-
-  //doInterruptAB = false;
-  doInterruptIndex = true;
   
   report_encoder();
   SmState = STATE_DC_MOTOR_MODE;
@@ -486,7 +473,6 @@ void doEncoderA() {
 
 // Interrupt on B changing state
 void doEncoderB() {
-  //if(doInterruptAB){
  
   B_set = digitalRead(encoderPinB) == HIGH;
   // and adjust counter + if B follows A
@@ -494,39 +480,29 @@ void doEncoderB() {
   encoderPos += (A_set == B_set) ? +1 : -1;
   encoderWrap();
 
-  
-  //}
 }
 
 //ENCODER DIRECTION IS ONLY NECESSARY FOR CALCULATING ANG VEL, SO ONLY NEEDS TO BE CORRECT WHEN
 //INDEX PIN TRIGGERS. Error in direction on wrap is OK....?
 void doIndexPin(void){
-  if(doInterruptIndex){
     //get direction of rotation
     
-//    if(encoderPos - encoderPosLast >= 0){
-//      encoder_direction_index = -1;
-//    } else{
-//      encoder_direction_index = 1;
-//    }
-  
-//    previous_time_index = current_time_index;
-//    current_time_index = millis();
-//
-//    if(current_time_index >= previous_time_index + min_rotation_time){
-//      encoderAngVel = encoder_direction * 60000.0/(current_time_index - previous_time_index);    //rpm
-//    }
+    if(encoderPos - encoderPosLast >= 0){
+      encoder_direction_index = -1;
+    } else{
+      encoder_direction_index = 1;
+    }
     
 
     led_index_on = !led_index_on;
     setIndexLEDs(led_index_on);
     //digitalWrite(ledIndex, led_index_on);
-    if(encoder_direction / encoder_direction_last < 0){
+    if(encoder_direction_index / encoder_direction_last < 0){
       setRotationLEDs(encoderAngVel);  
     }
 
-    encoder_direction_last = encoder_direction;
-  }
+    encoder_direction_last = encoder_direction_index;
+  
   
 }
 

@@ -1,8 +1,6 @@
-{"cmd":"set_position","param":50}		//position parameter between -1000 and 1000
-{"cmd":"set_speed","param":50}		//speed parameter in rpm
+{"cmd":"set_speed","param":50}		//speed parameter in rpm for PID_SPEED and 0-255 for DC_Motor
 {"cmd":"set_height","param":10}		//set governor height
 
-{"cmd":"set_mode","param":"CALIBRATE"}
 {"cmd":"set_mode","param":"ZERO"}
 {"cmd":"set_mode","param":"PID_SPEED_MODE"}	//set_speed parameter in rpm
 {"cmd":"set_mode","param":"DC_MOTOR_MODE"}	//set_speed parameter 0 - 255
@@ -12,4 +10,4 @@
 
 
 
-{"cmd":"set_parameters","Kp":1.0, "Ki":0, "Kd":0, "dt":3}	//dt in ms
+{"cmd":"set_parameters","Kp":1.0, "Ki":0, "Kd":0, "dt":20}	//dt in ms
