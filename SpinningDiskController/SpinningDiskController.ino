@@ -87,6 +87,7 @@ MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 
 int position_limit = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 float zero_error = 10;
+float max_rpm = 1000;
 
 int pid_interval = 20;       //ms, for timer interrupt    !!!!!!*********************************
 
@@ -96,6 +97,11 @@ int sameNeeded = 100;        //number of loops with the same encoder position to
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
 float timer_interrupt_freq = 1000.0/pid_interval;   
+
+//hardware mode switch off timer
+float mode_start_time = 0;        //ms
+float shutdown_timer = 30000;     //ms
+float max_timer = 60000;          //ms
 
 /**
  * Defines the valid states for the state machine
@@ -212,6 +218,10 @@ void Sm_State_PID_Speed(void){
   
   report_encoder();  
   SmState = STATE_PID_SPEED_MODE;
+
+  if(millis() >= mode_start_time + shutdown_timer && set_speed != 0){
+    SmState = STATE_AWAITING_STOP;
+  }
 }
 
 void Sm_State_Zero(void){
@@ -239,10 +249,14 @@ void Sm_State_Zero(void){
 
 void Sm_State_DC_Motor(void){
   
-  motor.drive(set_speed);
+  motor.drive(set_speed*1.275);     //max signal = 127.5 (6V/12V * 255)
   
   report_encoder();
   SmState = STATE_DC_MOTOR_MODE;
+
+  if(millis() >= mode_start_time + shutdown_timer && set_speed != 0){
+    SmState = STATE_AWAITING_STOP;
+  }
 }
 
 //*****************************************************************************
@@ -280,10 +294,12 @@ void setup() {
   
   attachEncoderInterrupts();
 
-  current_time_index = millis();   
-  previous_time_index = millis();
-
-  previous_report_time = millis();
+  //initialise time values
+  float t = millis();
+  current_time_index = t;   
+  previous_time_index = t;
+  previous_report_time = t;
+  mode_start_time = t;
 
   Serial.setTimeout(50);
   Serial.begin(57600);
@@ -303,6 +319,8 @@ void loop() {
 
 StateType readSerialJSON(StateType SmState){
   if(Serial.available() > 0){
+
+    mode_start_time = millis();   //on any command sent, reset the start time for hardware switch off
   
     Serial.readBytesUntil(10, command, COMMAND_SIZE);
     deserializeJson(doc, command);
@@ -310,17 +328,27 @@ StateType readSerialJSON(StateType SmState){
     const char* cmd = doc["cmd"];
 
     if(strcmp(cmd, "set_speed")==0){
-      if(SmState == STATE_PID_SPEED_MODE || SmState == STATE_DC_MOTOR_MODE){
+      float new_speed = doc["param"];
+      
+      if(SmState == STATE_PID_SPEED_MODE){
+     
+        if(new_speed <= max_rpm && new_speed >= -max_rpm){
+          resetPIDSignal();
+          set_speed = new_speed;
+        }
         
-        float new_speed = doc["param"];
-        resetPIDSignal();
-        set_speed = new_speed;
+      } else if(SmState == STATE_DC_MOTOR_MODE){
         
-      } else{
+        if(new_speed >= -100 && new_speed <= 100){
+          set_speed = new_speed;
+        }
+        
+      }
+      else{
         Serial.println("In wrong state to set speed");
       }
       
-    } 
+    }  
     else if(strcmp(cmd, "set_mode")==0){
       
       const char* new_mode = doc["param"];
@@ -368,6 +396,15 @@ StateType readSerialJSON(StateType SmState){
         setTimerFrequency(timer_interrupt_freq);        
       }
     } 
+
+    else if(strcmp(cmd, "timer") == 0){
+      float new_timer = doc["param"];
+      new_timer *= 1000.0;
+      if(new_timer > 0 && new_timer <= max_timer){
+        shutdown_timer = new_timer;
+      }
+    }
+    
   }
       return SmState;     //return whatever state it changed to or maintain the state.
  } 

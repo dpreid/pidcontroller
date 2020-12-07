@@ -91,6 +91,11 @@ int sameNeeded = 100;        //number of loops with the same encoder position to
 #define TIMER_PRESCALER_DIV 1024
 float timer_interrupt_freq = 1000.0/pid_interval;   
 
+//hardware mode switch off timer
+float mode_start_time = 0;        //ms
+float shutdown_timer = 30000;     //ms
+float max_timer = 60000;          //ms
+
 /**
  * Defines the valid states for the state machine
  * 
@@ -213,6 +218,10 @@ void Sm_State_PID_Position(void){
   report_encoder();
   SmState = STATE_PID_POSITION_MODE;
 
+  if(millis() >= mode_start_time + shutdown_timer && set_position != encoderPos){
+    SmState = STATE_AWAITING_STOP;
+  }
+
 }
 
 //TRANSITION: ZERO -> OFFSET
@@ -321,7 +330,9 @@ void setup() {
   
   attachEncoderInterrupts(); 
 
-  previous_report_time = millis();
+  float t = millis();
+  previous_report_time = t;
+  mode_start_time = t;
 
   Serial.setTimeout(50);
   Serial.begin(57600);
@@ -341,6 +352,8 @@ void loop() {
 
 StateType readSerialJSON(StateType SmState){
   if(Serial.available() > 0){
+
+    mode_start_time = millis();   //on any command sent, reset the start time for hardware switch off
   
     Serial.readBytesUntil(10, command, COMMAND_SIZE);
     deserializeJson(doc, command);
@@ -422,6 +435,14 @@ StateType readSerialJSON(StateType SmState){
         setTimerFrequency(timer_interrupt_freq);        
       }
     } 
+    
+    else if(strcmp(cmd, "timer") == 0){
+      float new_timer = doc["param"];
+      new_timer *= 1000.0;
+      if(new_timer > 0 && new_timer <= max_timer){
+        shutdown_timer = new_timer;
+      }
+    }
   }
       return SmState;     //return whatever state it changed to or maintain the state.
  } 

@@ -1,4 +1,4 @@
-{"cmd":"set_position","param":50}		//position parameter between -1000 and 1000
+{"cmd":"set_position","param":50}		//position parameter between -max_position and max_position
 {"cmd":"set_arm","param":90}			//set extension of digger arm between 0 and 180	
 
 {"cmd":"set_mode","param":"ZERO"}
@@ -9,3 +9,4 @@
 
 
 {"cmd":"set_parameters","Kp":1.0, "Ki":0, "Kd":0, "dt":20}	//dt in ms
+{"cmd":"timer","param":10)					//timer in seconds
