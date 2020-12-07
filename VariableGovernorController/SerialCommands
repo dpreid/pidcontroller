@@ -1,14 +1,14 @@
-{"cmd":"set_speed","param":50}		//speed parameter in rpm (max 1000) for PID_SPEED and 0-100% for DC_Motor
-{"cmd":"set_height","param":10}		//set governor height in mm
+{"set":"speed","to":50}		//speed parameter in rpm (max 1000) for PID_SPEED and 0-100% for DC_Motor
+{"set":"height","to":10}		//set governor height in mm
 
-{"cmd":"set_mode","param":"ZERO"}
-{"cmd":"set_mode","param":"PID_SPEED_MODE"}	//set_speed parameter in rpm
-{"cmd":"set_mode","param":"DC_MOTOR_MODE"}	//set_speed parameter 0 - 255
-{"cmd":"set_mode","param":"CONFIGURE"}
-{"cmd":"set_mode","param":"RESET_HEIGHT"}
-{"cmd":"set_mode","param":"STOP"}
+{"set":"mode","to":"zero"}
+{"set":"mode","to":"speedPid"}	//set_speed parameter in rpm
+{"set":"mode","to":"speedRaw"}	//set_speed parameter 0 - 255
+{"set":"mode","to":"configure"}
+{"set":"mode","to":"resetHeight"}
+{"set":"mode","to":"stop"}
 
 
 
-{"cmd":"set_parameters","Kp":1.0, "Ki":0, "Kd":0, "dt":20}	//dt in ms
-{"cmd":"timer","param":10)					//timer in seconds
+{"set":"parameters","kp":1.0, "ki":0, "kd":0, "dt":20}	//dt in ms
+{"set":"timer","to":10)					//timer in seconds

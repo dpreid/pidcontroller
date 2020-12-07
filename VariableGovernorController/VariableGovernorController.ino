@@ -409,7 +409,7 @@ void setup() {
   mode_start_time = t;
 
   Serial.setTimeout(50);
-  Serial.begin(57600);
+  Serial.begin(115200);
 
   startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
@@ -432,10 +432,10 @@ StateType readSerialJSON(StateType SmState){
     Serial.readBytesUntil(10, command, COMMAND_SIZE);
     deserializeJson(doc, command);
     
-    const char* cmd = doc["cmd"];
+    const char* set = doc["set"];
 
-    if(strcmp(cmd, "set_speed")==0){
-      float new_speed = doc["param"];
+    if(strcmp(set, "speed")==0){
+      float new_speed = doc["to"];
       
       if(SmState == STATE_PID_SPEED_MODE){
      
@@ -456,31 +456,31 @@ StateType readSerialJSON(StateType SmState){
       }
       
     } 
-    else if(strcmp(cmd, "set_mode")==0){
+    else if(strcmp(set, "mode")==0){
       
-      const char* new_mode = doc["param"];
+      const char* new_mode = doc["to"];
 
       if(SmState == STATE_STOPPED){
         
-        if(strcmp(new_mode, "PID_SPEED_MODE") == 0){
+        if(strcmp(new_mode, "speedPid") == 0){
         SmState = STATE_PID_SPEED_MODE;
         } 
-        else if(strcmp(new_mode, "DC_MOTOR_MODE") == 0){
+        else if(strcmp(new_mode, "speedRaw") == 0){
           SmState = STATE_DC_MOTOR_MODE;
         }
-        else if(strcmp(new_mode, "CONFIGURE") == 0){
+        else if(strcmp(new_mode, "configure") == 0){
           SmState = STATE_CONFIGURE;
         }
-        else if(strcmp(new_mode, "ZERO") == 0){
+        else if(strcmp(new_mode, "zero") == 0){
           SmState = STATE_ZERO;
         }
-        else if(strcmp(new_mode, "RESET_HEIGHT") == 0){
+        else if(strcmp(new_mode, "resetHeight") == 0){
           SmState = STATE_RESET_HEIGHT;
         }
         
       } else {
         
-        if(strcmp(new_mode, "STOP") == 0){
+        if(strcmp(new_mode, "stop") == 0){
           resetPIDSignal();
           SmState = STATE_AWAITING_STOP;      
         } 
@@ -488,20 +488,20 @@ StateType readSerialJSON(StateType SmState){
       }
       
    
-    } else if(strcmp(cmd, "set_parameters")==0){
+    } else if(strcmp(set, "parameters")==0){
 
       resetPIDSignal();
 
-      if(!doc["Kp"].isNull()){
-        Kp = doc["Kp"];
+      if(!doc["kp"].isNull()){
+        Kp = doc["kp"];
       }
 
-      if(!doc["Ki"].isNull()){
-        Ki = doc["Ki"];
+      if(!doc["ki"].isNull()){
+        Ki = doc["ki"];
       }
 
-      if(!doc["Kd"].isNull()){
-        Kd = doc["Kd"];
+      if(!doc["kd"].isNull()){
+        Kd = doc["kd"];
       }
 
       if(!doc["dt"].isNull()){
@@ -510,15 +510,15 @@ StateType readSerialJSON(StateType SmState){
         setTimerFrequency(timer_interrupt_freq);        
       }
     } 
-    else if(strcmp(cmd, "set_height") == 0){
-      float new_pos = doc["param"];
+    else if(strcmp(set, "height") == 0){
+      float new_pos = doc["to"];
       if(new_pos <= max_governor_pos && new_pos >= 0){
         set_governor_pos = new_pos;
       }
     }
 
-    else if(strcmp(cmd, "timer") == 0){
-      float new_timer = doc["param"];
+    else if(strcmp(set, "timer") == 0){
+      float new_timer = doc["to"];
       new_timer *= 1000.0;
       if(new_timer > 0 && new_timer <= max_timer){
         shutdown_timer = new_timer;

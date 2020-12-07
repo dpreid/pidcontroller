@@ -1,12 +1,12 @@
-{"cmd":"set_position","param":50}		//position parameter between -max_position and max_position
-{"cmd":"set_arm","param":90}			//set extension of digger arm between 0 and 180	
+{"set":"position","to":50}		//position parameter between -max_position and max_position
+{"set":"arm","to":90}			//set extension of digger arm between 0 and 180	
 
-{"cmd":"set_mode","param":"ZERO"}
-{"cmd":"set_mode","param":"PID_POSITION_MODE"}
-{"cmd":"set_mode","param":"CHANGE_ARM"}
-{"cmd":"set_mode","param":"STOP"}
+{"set":"mode","to":"zero"}
+{"set":"mode","to":"positionPid"}
+{"set":"mode","to":"changeArm"}
+{"set":"mode","to":"stop"}
 
 
 
-{"cmd":"set_parameters","Kp":1.0, "Ki":0, "Kd":0, "dt":20}	//dt in ms
-{"cmd":"timer","param":10)					//timer in seconds
+{"set":"parameters","kp":1.0, "ki":0, "kd":0, "dt":20}	//dt in ms
+{"set":"timer","to":10)					//timer in seconds
