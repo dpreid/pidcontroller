@@ -249,7 +249,7 @@ void Sm_State_Zero(void){
   }
 }
 
-//TRANSITION: OFFSET -> STOPPED
+//TRANSITION: OFFSET -> AWAITING_STOP
 void Sm_State_Offset(void){
   //enter this state with the index pin having been zeroed and encoder position set to zero within a zero_error
 
@@ -272,7 +272,7 @@ void Sm_State_Offset(void){
     SmState = STATE_OFFSET;  
   } else{
     encoderPos = 0;         //this is the newly set 0 encoder position
-    SmState = STATE_STOPPED;  
+    SmState = STATE_AWAITING_STOP;  
   }
 }
 

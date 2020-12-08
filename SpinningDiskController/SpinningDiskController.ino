@@ -242,7 +242,7 @@ void Sm_State_Zero(void){
   if(encoderPos > zero_error || encoderPos < -zero_error){    //allowed calibration error
     SmState = STATE_ZERO;  
   } else{
-    SmState = STATE_STOPPED;  
+    SmState = STATE_AWAITING_STOP;  
   }
   
 }
