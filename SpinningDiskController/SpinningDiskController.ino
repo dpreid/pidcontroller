@@ -92,7 +92,7 @@ float max_rpm = 1000;
 int pid_interval = 20;       //ms, for timer interrupt    !!!!!!*********************************
 
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
-
+int num_encoder_counts = 0;
 
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
@@ -494,13 +494,14 @@ void doEncoderA() {
       
     }
 
-  if(A_set){
+  if(A_set && num_encoder_counts >= 20){
     current_time_encoder = micros();
-    if(current_time_encoder > previous_time_encoder){
-      encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
-      previous_time_encoder = current_time_encoder;
-      } 
+    encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*(500.0/num_encoder_counts));    //rpm
+    previous_time_encoder = current_time_encoder;
+    num_encoder_counts = 0;
 
+  } else if(A_set){
+    num_encoder_counts++;
   }
 
   encoderWrap();
