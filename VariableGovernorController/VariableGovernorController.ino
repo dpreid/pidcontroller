@@ -119,7 +119,9 @@ int sameNeeded = 100;        //number of loops with the same encoder position to
 
 bool lowerLimitReached = false;
 bool isLimitInterruptAttached = false;
-int num_encoder_counts = 0;
+bool encoder_newly_attached = false;
+bool timer_interrupt = false;
+bool index_interrupt = false;
 
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
@@ -368,6 +370,7 @@ void Sm_Run(void)
 //This function is run on a timer interrupt defined by pid_interval/timer_interrupt_freq.
 void TimerInterrupt(void){
   if(SmState == STATE_PID_SPEED_MODE){
+    timer_interrupt = true;
     calculateSpeedPID();
   } 
 }
@@ -576,20 +579,26 @@ void report_encoder(void)
 
 void detachEncoderInterrupts(void){
   detachInterrupt(digitalPinToInterrupt(encoderPinA));
-  detachInterrupt(digitalPinToInterrupt(encoderPinB));
+  //detachInterrupt(digitalPinToInterrupt(encoderPinB));
   detachInterrupt(digitalPinToInterrupt(indexPin));
 }
 
 void attachEncoderInterrupts(void){
+  encoder_newly_attached = true;
+  
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
   attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+
+  
+  
 }
 
 // Interrupt on A changing state
 //Encoder A is used to calculate angular speed in rpm as well as new position
 void doEncoderA() {
   A_set = digitalRead(encoderPinA) == HIGH;
+  B_set = digitalRead(encoderPinB) == HIGH;
   // and adjust counter + if A leads B
   encoderPosLast = encoderPos;
   encoderPos += (A_set != B_set) ? +1 : -1;
@@ -613,14 +622,29 @@ void doEncoderA() {
       
     }
 
-  if(A_set && num_encoder_counts >= 20){
-    current_time_encoder = micros();
-    encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*(500.0/num_encoder_counts));    //rpm
-    previous_time_encoder = current_time_encoder;
-    num_encoder_counts = 0;
+  if(A_set){
+    if(!encoder_newly_attached){
+      if(!timer_interrupt){
+        if(!index_interrupt){
+          current_time_encoder = micros();
+          if(current_time_encoder > previous_time_encoder){
+            encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
+            previous_time_encoder = current_time_encoder;
+            }
+        } else{
+          previous_time_encoder = micros();
+          index_interrupt = false;
+        }
+         
+      } else{
+        previous_time_encoder = micros();
+        timer_interrupt = false;
+      }
+    } else{
+      previous_time_encoder = micros();
+      encoder_newly_attached = false;
+    }
 
-  } else if(A_set){
-    num_encoder_counts++;
   }
 
   encoderWrap();
@@ -642,7 +666,7 @@ void doEncoderB() {
 //ENCODER DIRECTION IS ONLY NECESSARY FOR CALCULATING ANG VEL, SO ONLY NEEDS TO BE CORRECT WHEN
 //INDEX PIN TRIGGERS. Error in direction on wrap is OK....?
 void doIndexPin(void){
-
+    index_interrupt = true;
     //get direction of rotation as passes through index
     if(encoderPos - encoderPosLast >= 0){
       encoder_direction_index = -1;
