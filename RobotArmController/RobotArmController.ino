@@ -228,7 +228,7 @@ void Sm_State_PID_Position(void){
 void Sm_State_Zero(void){
 
   bool index_state = led_index_on;
-  float starting_signal = 50;
+  float starting_signal = 40;
   while(index_state == led_index_on){
     motor.drive(-encoder_direction_index * starting_signal);
     starting_signal += 0.000001;
@@ -245,10 +245,11 @@ void Sm_State_Zero(void){
   } else{
     //index pin has been zeroed so...
     //transition to OFFSET STATE
-    SmState = STATE_OFFSET;  
+    SmState = STATE_AWAITING_STOP;  
   }
 }
 
+//INDEX PIN IS ALIGNED WITH DIGGER ARM SO NO NEED FOR OFFSET
 //TRANSITION: OFFSET -> AWAITING_STOP
 void Sm_State_Offset(void){
   //enter this state with the index pin having been zeroed and encoder position set to zero within a zero_error
