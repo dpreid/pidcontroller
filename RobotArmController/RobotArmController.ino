@@ -96,6 +96,9 @@ float mode_start_time = 0;        //ms
 float shutdown_timer = 30000;     //ms
 float max_timer = 60000;          //ms
 
+//for initialisation
+int kick_dir = 1;
+
 /**
  * Defines the valid states for the state machine
  * 
@@ -107,7 +110,8 @@ typedef enum
   STATE_AWAITING_STOP,  //checking if the motor has stopped
   STATE_STOPPED,        //no drive to motor
   STATE_PID_POSITION_MODE,  //pid controller - 2nd order, position functions
-  STATE_CHANGE_ARM      //state for extending and retracting digger arm
+  STATE_CHANGE_ARM,      //state for extending and retracting digger arm
+  STATE_INITIALISE      //robot arm specific state for setting initial direction position
 } StateType;
 
 //state Machine function prototypes
@@ -118,6 +122,7 @@ void Sm_State_Awaiting_Stop(void);
 void Sm_State_Stopped(void);
 void Sm_State_PID_Position(void);
 void Sm_State_Change_Arm(void);
+void Sm_State_Initialise(void);
 
 /**
  * Type definition used to define the state
@@ -141,17 +146,39 @@ StateMachineType StateMachine[] =
   {STATE_STOPPED, Sm_State_Stopped},
   {STATE_PID_POSITION_MODE, Sm_State_PID_Position},
   {STATE_CHANGE_ARM, Sm_State_Change_Arm},
+  {STATE_INITIALISE, Sm_State_Initialise},
 };
  
-int NUM_STATES = 6;
+int NUM_STATES = 7;
 
 /**
  * Stores the current state of the state machine
  */
  
-StateType SmState = STATE_STOPPED;    //START IN THE STOPPED STATE
+StateType SmState = STATE_INITIALISE;    //START IN THE INITIALISE STATE
 
 //DEFINE STATE MACHINE FUNCTIONS================================================================
+
+//TRANSITION: INITIALISE --> ZERO
+void Sm_State_Initialise(void){
+
+  bool index_pin = led_index_on;  //we need this to change for initialisation
+  
+  kick_dir = -1*kick_dir;   //reverse the direction each time
+
+  motor.drive(kick_dir*100);
+  delay(300);
+  motor.brake();
+
+  if(index_pin == led_index_on){
+    SmState = STATE_INITIALISE;
+  } else{
+    SmState = STATE_ZERO;
+  }
+
+  
+}
+
 
 //TRANSITION: Stopped -> Stopped
 void Sm_State_Stopped(void){  
@@ -341,7 +368,6 @@ void setup() {
   startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
    while (! Serial);
-
    
 }
 

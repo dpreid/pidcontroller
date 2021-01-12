@@ -17,7 +17,7 @@ echo "waiting for websocat"
 
 sleep 3
 
-socat /dev/ttyUSB0,echo=0,b57600,crnl tcp:127.0.0.1:9999 &
+socat /dev/ttyACM0,echo=0,b57600,crnl tcp:127.0.0.1:9999 &
 
 curl -X POST -H "Content-Type: application/json" -d '{"stream":"pendulum0","destination":"wss://video.practable.io:443/bi/dpr/pendulum0","id":"5"}' http://localhost:8888/api/destinations
 
