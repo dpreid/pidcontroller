@@ -344,12 +344,17 @@ void Sm_State_Reset_Height(void){
   }
   
    enableStepper(true);
-    while(!lowerLimitReached){
+    if(!lowerLimitReached){
       stepper.setSpeed(stepper_speed);
       stepper.step(-1);
+      SmState = STATE_RESET_HEIGHT;
+    } 
+    else
+    {
+      SmState = STATE_AWAITING_STOP;
     }
 
-    SmState = STATE_AWAITING_STOP; 
+    
 }
 
 //STATE MACHINE RUN FUNCTION

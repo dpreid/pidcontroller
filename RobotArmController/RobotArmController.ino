@@ -77,8 +77,9 @@ bool led_index_on = false;
 MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 
 int position_max = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
-int position_limit = 200;   //the soft position limit either side of the zero point.
-
+int position_limit = 300;   //the soft position limit either side of the zero point.
+int arm_min = 60;           //the range of positions for the servo connected to the arm
+int arm_max = 120;
 float zero_error = 10;
 float zero_offset = -200;    //the encoderPos difference between index and digger arm 0 position
 
@@ -255,7 +256,7 @@ void Sm_State_PID_Position(void){
 void Sm_State_Zero(void){
 
   bool index_state = led_index_on;
-  float starting_signal = 40;
+  float starting_signal = 30;
   while(index_state == led_index_on){
     motor.drive(-encoder_direction_index * starting_signal);
     starting_signal += 0.000001;
@@ -407,7 +408,7 @@ StateType readSerialJSON(StateType SmState){
   else if(strcmp(set, "arm")==0){
     if(SmState == STATE_CHANGE_ARM){
       float new_position = doc["to"];
-      if(new_position >= 0 && new_position <= 180){
+      if(new_position >= arm_min && new_position <= arm_max){
         set_arm_extension = new_position;
       } else{
         Serial.println("Outside position range");
