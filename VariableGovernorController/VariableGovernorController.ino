@@ -63,12 +63,16 @@ unsigned long current_time_index = 0;
 unsigned long previous_time_index = 0;
 
 //other user set values
+float set_position = 0;     //the position the user has set
 float set_speed = 0;        //user set speed for PID_Speed mode (0-1000rpm) and DC_Motor mode(0-100%), 
 float Kp = 1.0;               //PID parameters
 float Ki = 0.0;
 float Kd = 0.0;
 
 //pid calculated values
+volatile float error = 0;
+volatile float previous_error = 0;
+volatile float previous_previous_error = 0;
 volatile float error_speed = 0;
 volatile float previous_error_speed = 0;
 volatile float previous_previous_error_speed = 0;
@@ -143,6 +147,7 @@ typedef enum
   STATE_STOPPED,        //no drive to motor
   STATE_PID_SPEED_MODE, //pid controller mode - 1st order, speed functions
   STATE_DC_MOTOR_MODE,    //regular dc motor functions with no PID controller
+  STATE_PID_POSITION_MODE,  //pid controller - 2nd order, position functions
   STATE_CONFIGURE, //mode for changing position of the governor.
   STATE_RESET_HEIGHT  //resets the governor height to 0.
 } StateType;
@@ -154,6 +159,7 @@ void Sm_State_Awaiting_Stop(void);
 void Sm_State_Stopped(void);
 void Sm_State_PID_Speed(void);
 void Sm_State_DC_Motor(void);
+void Sm_State_PID_Position(void);
 void Sm_State_Configure(void);
 void Sm_State_Reset_Height(void);
 
@@ -178,11 +184,12 @@ StateMachineType StateMachine[] =
   {STATE_STOPPED, Sm_State_Stopped},
   {STATE_PID_SPEED_MODE, Sm_State_PID_Speed},
   {STATE_DC_MOTOR_MODE, Sm_State_DC_Motor},
+  {STATE_PID_POSITION_MODE, Sm_State_PID_Position},
   {STATE_CONFIGURE, Sm_State_Configure},
   {STATE_RESET_HEIGHT, Sm_State_Reset_Height}
 };
  
-int NUM_STATES = 7;
+int NUM_STATES = 8;
 
 /**
  * Stores the current state of the state machine
@@ -202,7 +209,8 @@ void Sm_State_Stopped(void){
   
   enableStepper(false);         
   lowerLimitReached = false;    //CHECK THIS
-  
+
+  set_position = encoderPos;
   set_speed = 0;
   encoderAngVel = 0;
   
@@ -265,6 +273,26 @@ void Sm_State_PID_Speed(void){
   if(millis() >= mode_start_time + shutdown_timer && set_speed != 0){
     SmState = STATE_AWAITING_STOP;
   }
+}
+
+//TRANSITION: PID_POSITION -> PID_POSITION
+void Sm_State_PID_Position(void){
+
+    if(PID_signal > 255){
+      motor.drive(255);
+    } else if(PID_signal < -255){
+      motor.drive(-255);
+    } else{
+      motor.drive(PID_signal);
+    }
+  
+  report_encoder();
+  SmState = STATE_PID_POSITION_MODE;
+
+  if(millis() >= mode_start_time + shutdown_timer && set_position != encoderPos){
+    SmState = STATE_AWAITING_STOP;
+  }
+
 }
 
 
@@ -377,7 +405,10 @@ void TimerInterrupt(void){
   if(SmState == STATE_PID_SPEED_MODE){
     timer_interrupt = true;
     calculateSpeedPID();
-  } 
+  } else if(SmState == STATE_PID_POSITION_MODE){
+    timer_interrupt = true;
+    calculatePositionPID();
+  }
 }
 
 // SETUP AND LOOP==================================================================================
@@ -465,6 +496,23 @@ StateType readSerialJSON(StateType SmState){
       }
       
     } 
+    else if(strcmp(set, "position")==0){
+      if(SmState == STATE_PID_POSITION_MODE){
+        float new_position = doc["to"];
+        if(new_position >= -position_limit && new_position <= position_limit){
+          
+          resetPIDSignal();
+          set_position = new_position;
+          
+        } else{
+          Serial.println("Outside position range");
+        }
+      } else{
+          Serial.println("In wrong state to set position");
+      }
+      
+      
+  } 
     else if(strcmp(set, "mode")==0){
       
       const char* new_mode = doc["to"];
@@ -476,6 +524,9 @@ StateType readSerialJSON(StateType SmState){
         } 
         else if(strcmp(new_mode, "speedRaw") == 0){
           SmState = STATE_DC_MOTOR_MODE;
+        }
+        else if(strcmp(new_mode, "positionPid") == 0){
+          SmState = STATE_PID_POSITION_MODE;
         }
         else if(strcmp(new_mode, "configure") == 0){
           SmState = STATE_CONFIGURE;
@@ -544,6 +595,9 @@ void resetPIDSignal(void){
   previous_PID_signal = 0;
   previous_previous_PID_signal = 0;
 
+  error = 0;
+  previous_error = 0;
+  previous_previous_error = 0;
   error_speed = 0;
   previous_error_speed = 0;
   previous_previous_error_speed = 0;
@@ -584,7 +638,7 @@ void report_encoder(void)
 
 void detachEncoderInterrupts(void){
   detachInterrupt(digitalPinToInterrupt(encoderPinA));
-  //detachInterrupt(digitalPinToInterrupt(encoderPinB));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB));
   detachInterrupt(digitalPinToInterrupt(indexPin));
 }
 
@@ -592,7 +646,7 @@ void attachEncoderInterrupts(void){
   encoder_newly_attached = true;
   
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
-  //attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
   attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 
   
@@ -664,7 +718,7 @@ void doEncoderB() {
   // and adjust counter + if B follows A
   encoderPosLast = encoderPos;
   encoderPos += (A_set == B_set) ? +1 : -1;
-  //encoderWrap();
+  encoderWrap();
 
 }
 
@@ -714,6 +768,36 @@ void calculateSpeedPID(void){
 
   PID_signal += new_signal;
     
+}
+
+//DISCRETE TIME VERSION
+void calculatePositionPID(void){
+    previous_previous_error = previous_error;
+    previous_error = error;
+    
+  float error_pos = encoderPos - set_position;
+  int dir = error_pos / abs(error_pos);    //should be +1 or -1.
+  
+  float error_pos_inverse = 2*position_limit - abs(error_pos);
+
+  if(abs(error_pos) <= abs(error_pos_inverse)){
+    error = error_pos;
+  } else {
+    error = -1*dir*error_pos_inverse;
+  }
+  //convert error to an angular error in deg
+  error = error*180/position_limit;
+  
+  
+  float delta_t = pid_interval/1000.0;
+  float Ti = Kp/Ki;
+  float Td = Kd/Kp;
+  
+ float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error - 2*previous_error + previous_previous_error));
+
+  PID_signal += new_signal;
+    
+
 }
 
 void setStepperLEDs(float value){

@@ -568,16 +568,15 @@ void calculatePositionPID(void){
     previous_previous_error = previous_error;
     previous_error = error;
     
-  float not_through_wrap_error = encoderPos - set_position;
-  float mag = abs(not_through_wrap_error);
-  int dir = not_through_wrap_error / mag;    //should be +1 or -1.
+  float error_pos = encoderPos - set_position;
+  int dir = error_pos / abs(error_pos);    //should be +1 or -1.
   
-  float through_wrap_error = 2*position_max - abs(encoderPos) - abs(set_position);
+  float error_pos_inverse = 2*position_max - abs(error_pos);
 
-  if(abs(not_through_wrap_error) <= through_wrap_error){
-    error = not_through_wrap_error;
+  if(abs(error_pos) <= abs(error_pos_inverse)){
+    error = error_pos;
   } else {
-    error = -1*dir*through_wrap_error;
+    error = -1*dir*error_pos_inverse;
   }
   //convert error to an angular error in deg
   error = error*180/position_max;
