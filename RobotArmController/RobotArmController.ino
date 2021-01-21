@@ -258,7 +258,11 @@ void Sm_State_Zero(void){
   bool index_state = led_index_on;
   float starting_signal = 30;
   while(index_state == led_index_on){
-    motor.drive(-encoder_direction_index * starting_signal);
+    if(encoderPos >= 0){
+       motor.drive(starting_signal);
+    } else{
+      motor.drive(-starting_signal);
+    }
     starting_signal += 0.000001;
   }
   motor.brake();
@@ -268,7 +272,7 @@ void Sm_State_Zero(void){
   delay(100);
   
   //report_encoder();
-  if(encoderPos > zero_error || encoderPos < -zero_error){    //allowed calibration error
+  if((encoderPos > zero_error || encoderPos < -zero_error)){    //allowed calibration error
     SmState = STATE_ZERO;  
   } else{
     //index pin has been zeroed so...
@@ -552,6 +556,10 @@ void doIndexPin(void){
     
     led_index_on = !led_index_on;
     setIndexLEDs(led_index_on);
+
+    if(SmState == STATE_INITIALISE){
+      encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
+    }
   
 }
 
