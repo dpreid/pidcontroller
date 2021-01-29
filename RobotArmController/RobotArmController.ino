@@ -78,6 +78,7 @@ MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 
 int position_max = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 int position_limit = 300;   //the soft position limit either side of the zero point.
+int position_motor_off = 400;   //the maximum position to which the motor will run before switching to AWAITING_STOP
 int arm_min = 60;           //the range of positions for the servo connected to the arm
 int arm_max = 120;
 float zero_error = 10;
@@ -246,7 +247,9 @@ void Sm_State_PID_Position(void){
   report_encoder();
   SmState = STATE_PID_POSITION_MODE;
 
-  if(millis() >= mode_start_time + shutdown_timer && set_position != encoderPos){
+  if(millis() >= mode_start_time + shutdown_timer){
+    SmState = STATE_AWAITING_STOP;
+  } else if(abs(encoderPos) > position_motor_off){
     SmState = STATE_AWAITING_STOP;
   }
 

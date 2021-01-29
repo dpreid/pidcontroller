@@ -289,7 +289,7 @@ void Sm_State_PID_Position(void){
   report_encoder();
   SmState = STATE_PID_POSITION_MODE;
 
-  if(millis() >= mode_start_time + shutdown_timer && set_position != encoderPos){
+  if(millis() >= mode_start_time + shutdown_timer){
     SmState = STATE_AWAITING_STOP;
   }
 
