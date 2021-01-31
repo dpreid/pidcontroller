@@ -164,6 +164,11 @@ StateType SmState = STATE_INITIALISE;    //START IN THE INITIALISE STATE
 //TRANSITION: INITIALISE --> ZERO
 void Sm_State_Initialise(void){
 
+  servo.attach(SERVO);
+  servo.write(90);
+  delay(100);
+  servo.detach();
+
   bool index_pin = led_index_on;  //we need this to change for initialisation
   
   kick_dir = -1*kick_dir;   //reverse the direction each time
