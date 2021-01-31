@@ -923,68 +923,6 @@ void enableStepper(bool on){
   }
 }
 
-//If encoderPos is beyond 90 degrees of the set position then the motor pos is unstable and motor should return TRUE.
-//RETURNS TRUE if outside the expected range -> motor should switch off.
-bool checkOutsideRange(){
-  if(set_position <= 500 && set_position >= -500){
-    //if moving CW
-    if(encoder_direction == -1){
-      if(encoderPos > set_position + 500){
-        return true;
-      } else {
-        return false;
-      }
-      //moving CCW
-    } else {
-      if(encoderPos < set_position - 500){
-        return true;
-      } else {
-        return false;
-      }
-    }
-  } 
-  else if(set_position > 500 && set_position <= 1000){
-    //moving CW
-    int quadrant_limit_1 = set_position - 1500;
-    int quadrant_limit_2 = set_position - 1000;
-    int quadrant_limit_3 = set_position - 500;
-    //moving CW
-    if(encoder_direction == -1){
-      if(encoderPos >= quadrant_limit_1 && encoderPos <= quadrant_limit_2){
-        return true;
-      } else{
-        return false;
-      }
-      //moving CCW
-    } else{
-      if(encoderPos <= quadrant_limit_3 && encoderPos >= quadrant_limit_2){
-        return true;
-      } else {
-        return false;
-      }
-    }
-  } 
-  else {
-     int quadrant_limit_1 = set_position + 1500;
-     int quadrant_limit_2 = set_position + 1000;
-     int quadrant_limit_3 = set_position + 500;
-    //moving CW
-    if(encoder_direction == -1){
-     if(encoderPos >= quadrant_limit_3 && encoderPos <= quadrant_limit_2){
-      return true; 
-     } else{
-      return false;
-     }
-     //moving CCW
-    } else{
-      if(encoderPos <= quadrant_limit_1 && encoderPos >= quadrant_limit_2){
-        return true;
-      } else {
-        return false;
-      }
-    }
-  }
-}
 
 //==================================================================================
 //======================TIMER INTERRUPT FUNCTIONS====================================
