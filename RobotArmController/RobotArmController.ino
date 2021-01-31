@@ -429,6 +429,7 @@ StateType readSerialJSON(StateType SmState){
 
       if(SmState == STATE_STOPPED){
         if(strcmp(new_mode, "positionPid") == 0){
+          resetPIDSignal();
           SmState = STATE_PID_POSITION_MODE;
         }
         else if(strcmp(new_mode, "zero") == 0){

@@ -359,7 +359,8 @@ StateType readSerialJSON(StateType SmState){
       if(SmState == STATE_STOPPED){
         
         if(strcmp(new_mode, "speedPid") == 0){
-        SmState = STATE_PID_SPEED_MODE;
+          resetPIDSignal();
+          SmState = STATE_PID_SPEED_MODE;
         } 
         else if(strcmp(new_mode, "speedRaw") == 0){
           SmState = STATE_DC_MOTOR_MODE;

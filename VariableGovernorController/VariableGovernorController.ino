@@ -136,6 +136,8 @@ float mode_start_time = 0;        //ms
 float shutdown_timer = 30000;     //ms
 float max_timer = 60000;          //ms
 
+int encoderWrapCW = 0;
+int encoderWrapCCW = 0;
 /**
  * Defines the valid states for the state machine
  * 
@@ -290,6 +292,10 @@ void Sm_State_PID_Position(void){
   SmState = STATE_PID_POSITION_MODE;
 
   if(millis() >= mode_start_time + shutdown_timer){
+    SmState = STATE_AWAITING_STOP;
+  } else if(encoderWrapCW > 1 | encoderWrapCCW > 1){
+    encoderWrapCW = 0;
+    encoderWrapCCW = 0;
     SmState = STATE_AWAITING_STOP;
   }
 
@@ -498,9 +504,10 @@ StateType readSerialJSON(StateType SmState){
     } 
     else if(strcmp(set, "position")==0){
       if(SmState == STATE_PID_POSITION_MODE){
+        encoderWrapCW = 0;
+        encoderWrapCCW = 0;
         float new_position = doc["to"];
         if(new_position >= -position_limit && new_position <= position_limit){
-          
           resetPIDSignal();
           set_position = new_position;
           
@@ -520,12 +527,16 @@ StateType readSerialJSON(StateType SmState){
       if(SmState == STATE_STOPPED){
         
         if(strcmp(new_mode, "speedPid") == 0){
-        SmState = STATE_PID_SPEED_MODE;
+          resetPIDSignal();
+          SmState = STATE_PID_SPEED_MODE;
         } 
         else if(strcmp(new_mode, "speedRaw") == 0){
           SmState = STATE_DC_MOTOR_MODE;
         }
         else if(strcmp(new_mode, "positionPid") == 0){
+          resetPIDSignal();
+          encoderWrapCW = 0;
+          encoderWrapCCW = 0;
           SmState = STATE_PID_POSITION_MODE;
         }
         else if(strcmp(new_mode, "configure") == 0){
@@ -742,13 +753,17 @@ void doIndexPin(void){
 
     encoder_direction_last = encoder_direction_index;
   
-  
+    
 }
 
 void encoderWrap(void){
   if (encoderPos >= position_limit) {
+    encoderWrapCW++;
+    encoderWrapCCW = 0;
     encoderPos -= 2*position_limit;
     } else if (encoderPos <= -position_limit) {
+      encoderWrapCCW++;
+      encoderWrapCW = 0;
       encoderPos += 2*position_limit;
       }
 }
@@ -905,6 +920,69 @@ void enableStepper(bool on){
     digitalWrite(SEN, LOW);
   } else{
     digitalWrite(SEN, HIGH);
+  }
+}
+
+//If encoderPos is beyond 90 degrees of the set position then the motor pos is unstable and motor should return TRUE.
+//RETURNS TRUE if outside the expected range -> motor should switch off.
+bool checkOutsideRange(){
+  if(set_position <= 500 && set_position >= -500){
+    //if moving CW
+    if(encoder_direction == -1){
+      if(encoderPos > set_position + 500){
+        return true;
+      } else {
+        return false;
+      }
+      //moving CCW
+    } else {
+      if(encoderPos < set_position - 500){
+        return true;
+      } else {
+        return false;
+      }
+    }
+  } 
+  else if(set_position > 500 && set_position <= 1000){
+    //moving CW
+    int quadrant_limit_1 = set_position - 1500;
+    int quadrant_limit_2 = set_position - 1000;
+    int quadrant_limit_3 = set_position - 500;
+    //moving CW
+    if(encoder_direction == -1){
+      if(encoderPos >= quadrant_limit_1 && encoderPos <= quadrant_limit_2){
+        return true;
+      } else{
+        return false;
+      }
+      //moving CCW
+    } else{
+      if(encoderPos <= quadrant_limit_3 && encoderPos >= quadrant_limit_2){
+        return true;
+      } else {
+        return false;
+      }
+    }
+  } 
+  else {
+     int quadrant_limit_1 = set_position + 1500;
+     int quadrant_limit_2 = set_position + 1000;
+     int quadrant_limit_3 = set_position + 500;
+    //moving CW
+    if(encoder_direction == -1){
+     if(encoderPos >= quadrant_limit_3 && encoderPos <= quadrant_limit_2){
+      return true; 
+     } else{
+      return false;
+     }
+     //moving CCW
+    } else{
+      if(encoderPos <= quadrant_limit_1 && encoderPos >= quadrant_limit_2){
+        return true;
+      } else {
+        return false;
+      }
+    }
   }
 }
 
