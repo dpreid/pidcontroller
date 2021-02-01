@@ -164,10 +164,10 @@ StateType SmState = STATE_INITIALISE;    //START IN THE INITIALISE STATE
 //TRANSITION: INITIALISE --> ZERO
 void Sm_State_Initialise(void){
 
-  servo.attach(SERVO);
+  //servo.attach(SERVO);
   servo.write(90);
   delay(100);
-  servo.detach();
+  
 
   bool index_pin = led_index_on;  //we need this to change for initialisation
   
@@ -190,9 +190,9 @@ void Sm_State_Initialise(void){
 //TRANSITION: Stopped -> Stopped
 void Sm_State_Stopped(void){  
 
-  if(servo.attached()){
-    servo.detach();
-  }
+//  if(servo.attached()){
+//    servo.detach();
+//  }
        
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
  
@@ -360,8 +360,8 @@ void setup() {
   
   servo.attach(SERVO);
   servo.write(set_arm_extension);
-  delay(1000);
-  servo.detach();
+  delay(100);
+  //servo.detach();
 
   pinMode(encoderPinA, INPUT);
   pinMode(encoderPinB, INPUT);
