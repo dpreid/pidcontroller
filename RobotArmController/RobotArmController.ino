@@ -166,7 +166,7 @@ StateType SmState = STATE_INITIALISE;    //START IN THE INITIALISE STATE
 void Sm_State_Initialise(void){
 
   //servo.attach(SERVO);
-  servo.write(90);
+  servo.write(90 + ARM_OFFSET);
   delay(100);
   
 
@@ -361,7 +361,7 @@ void TimerInterrupt(void){
 void setup() {
   
   servo.attach(SERVO);
-  servo.write(set_arm_extension);
+  servo.write(set_arm_extension + ARM_OFFSET);
   delay(100);
   //servo.detach();
 
