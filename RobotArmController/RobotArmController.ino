@@ -26,6 +26,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define SERVO 18
 Servo servo;
 volatile float set_arm_extension = 90.0;   //the position of the servo motor for extending arm: angle (degrees) between 0 and 180.
+#define ARM_OFFSET 0.0
  
 #define encoderPinA 3     //these pins all have interrupts on them.
 #define encoderPinB 2
@@ -325,8 +326,9 @@ void Sm_State_Change_Arm(void){
   }
 
   //if the servo set position has changed since the last call to write then call write
-  if(servo.read() != set_arm_extension){
-      servo.write(set_arm_extension);
+  float new_position = set_arm_extension + ARM_OFFSET;
+  if(servo.read() != new_position){
+      servo.write(new_position);
       delay(100);
   }
 
