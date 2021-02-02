@@ -83,11 +83,13 @@ int position_motor_off = 400;   //the maximum position to which the motor will r
 int arm_min = 60;           //the range of positions for the servo connected to the arm
 int arm_max = 120;
 float zero_error = 10;
+float zero_signal = 30;     //the motor signal for zeroing the position.
 float zero_offset = -200;    //the encoderPos difference between index and digger arm 0 position
 
 int pid_interval = 20;       //ms, for timer interrupt
 
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
+
 
 
 #define CPU_HZ 48000000
@@ -204,6 +206,7 @@ void Sm_State_Stopped(void){
 //TRANSITION: AWAITING_STOP -> STOPPED
 void Sm_State_Awaiting_Stop(void){
   motor.brake();
+  zero_signal = 30;       //reset zero signal
   
   bool moving = true;
   int lastPos = 0;
@@ -261,22 +264,19 @@ void Sm_State_PID_Position(void){
 
 }
 
-//TRANSITION: ZERO -> OFFSET
+//TRANSITION: ZERO -> AWAITING_STOP
 void Sm_State_Zero(void){
+//when arm passes through index the encoderPos = 0.
 
-  bool index_state = led_index_on;
-  float starting_signal = 30;
-  while(index_state == led_index_on){
-    if(encoderPos >= 0){
-       motor.drive(starting_signal);
-    } else{
-      motor.drive(-starting_signal);
-    }
-    starting_signal += 0.000001;
+  if(encoderPos >= 0){
+     motor.drive(zero_signal);
+  } else{
+    motor.drive(-zero_signal);
   }
-  motor.brake();
+  zero_signal += 0.000001;
+  //motor.brake();
 
-  encoderPos = 0;
+  //encoderPos = 0;   //no need to do it here as is done in index interrupt.
 
   delay(100);
   
