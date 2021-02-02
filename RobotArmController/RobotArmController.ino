@@ -103,7 +103,7 @@ float max_timer = 60000;          //ms
 
 //for initialisation
 int kick_dir = 1;
-
+bool initial_index_hit = false;
 /**
  * Defines the valid states for the state machine
  * 
@@ -165,14 +165,15 @@ StateType SmState = STATE_INITIALISE;    //START IN THE INITIALISE STATE
 //DEFINE STATE MACHINE FUNCTIONS================================================================
 
 //TRANSITION: INITIALISE --> ZERO
+//Gives the arm a kick in either direction. When the index pin is hit, initial_index_hit set to TRUE.
 void Sm_State_Initialise(void){
 
   //servo.attach(SERVO);
-  servo.write(90 + ARM_OFFSET);
-  delay(100);
+  //servo.write(90 + ARM_OFFSET);
+  //delay(100);
   
 
-  bool index_pin = led_index_on;  //we need this to change for initialisation
+  //bool index_pin = led_index_on;  //we need this to change for initialisation
   
   kick_dir = -1*kick_dir;   //reverse the direction each time
 
@@ -180,7 +181,7 @@ void Sm_State_Initialise(void){
   delay(300);
   motor.brake();
 
-  if(index_pin == led_index_on){
+  if(!initial_index_hit){
     SmState = STATE_INITIALISE;
   } else{
     SmState = STATE_ZERO;
@@ -266,7 +267,7 @@ void Sm_State_PID_Position(void){
 
 //TRANSITION: ZERO -> AWAITING_STOP
 void Sm_State_Zero(void){
-//when arm passes through index the encoderPos = 0.
+//when arm passes through index, during initialisation, the encoderPos = 0.
 
   if(encoderPos >= 0){
      motor.drive(zero_signal);
@@ -285,7 +286,6 @@ void Sm_State_Zero(void){
     SmState = STATE_ZERO;  
   } else{
     //index pin has been zeroed so...
-    //transition to OFFSET STATE
     SmState = STATE_AWAITING_STOP;  
   }
 }
@@ -569,6 +569,7 @@ void doIndexPin(void){
     setIndexLEDs(led_index_on);
 
     if(SmState == STATE_INITIALISE){
+      initial_index_hit = true;
       encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
     }
   
