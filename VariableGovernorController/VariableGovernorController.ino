@@ -144,7 +144,6 @@ int encoderWrapCCW = 0;
  */
 typedef enum
 {
-  STATE_ZERO,           //zeroes the angle without changing governor height
   STATE_AWAITING_STOP,  //checking if the motor has stopped
   STATE_STOPPED,        //no drive to motor
   STATE_PID_SPEED_MODE, //pid controller mode - 1st order, speed functions
@@ -156,7 +155,6 @@ typedef enum
 
 //state Machine function prototypes
 //these are the functions that run whilst in each respective state.
-void Sm_State_Zero(void);
 void Sm_State_Awaiting_Stop(void);
 void Sm_State_Stopped(void);
 void Sm_State_PID_Speed(void);
@@ -181,7 +179,6 @@ typedef struct
  */
 StateMachineType StateMachine[] =
 {
-  {STATE_ZERO, Sm_State_Zero},
   {STATE_AWAITING_STOP, Sm_State_Awaiting_Stop},
   {STATE_STOPPED, Sm_State_Stopped},
   {STATE_PID_SPEED_MODE, Sm_State_PID_Speed},
@@ -191,7 +188,7 @@ StateMachineType StateMachine[] =
   {STATE_RESET_HEIGHT, Sm_State_Reset_Height}
 };
  
-int NUM_STATES = 8;
+int NUM_STATES = 7;
 
 /**
  * Stores the current state of the state machine
@@ -301,29 +298,6 @@ void Sm_State_PID_Position(void){
 
 }
 
-
-void Sm_State_Zero(void){
-
-  bool index_state = led_index_on;
-  float starting_signal = 50;
-  while(index_state == led_index_on){
-    motor.drive(-encoder_direction_index * starting_signal);
-    starting_signal += 0.000001;
-  }
-  motor.brake();
-
-  encoderPos = 0;
-
-  delay(100);
-  
-  report_encoder();
-  if(encoderPos > zero_error || encoderPos < -zero_error){    //allowed calibration error
-    SmState = STATE_ZERO;  
-  } else{
-    SmState = STATE_AWAITING_STOP;  
-  }
-  
-}
 
 void Sm_State_DC_Motor(void){
   motor.drive(set_speed*1.275);     //max signal = 127.5 (6V/12V * 255)
@@ -541,9 +515,6 @@ StateType readSerialJSON(StateType SmState){
         }
         else if(strcmp(new_mode, "configure") == 0){
           SmState = STATE_CONFIGURE;
-        }
-        else if(strcmp(new_mode, "zero") == 0){
-          SmState = STATE_ZERO;
         }
         else if(strcmp(new_mode, "resetHeight") == 0){
           SmState = STATE_RESET_HEIGHT;
