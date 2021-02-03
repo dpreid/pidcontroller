@@ -178,10 +178,10 @@ void Sm_State_Initialise(void){
   
   kick_dir = -1*kick_dir;   //reverse the direction each time
 
-  motor.drive(kick_dir*kick_magnitude);
-  kick_magnitude += 0.1;
+  motor.drive(kick_dir*100.0);
+  //kick_magnitude += 0.1;
   delay(300);
-  //motor.brake();
+  motor.brake();
 
   if(initial_index_hit == false){
     SmState = STATE_INITIALISE;
@@ -196,9 +196,9 @@ void Sm_State_Initialise(void){
 //TRANSITION: Stopped -> Stopped
 void Sm_State_Stopped(void){  
 
-  if(servo.attached()){
-    servo.detach();
-  }
+//  if(servo.attached()){
+//    servo.detach();
+//  }
        
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
  
@@ -362,10 +362,10 @@ void TimerInterrupt(void){
 // SETUP AND LOOP==================================================================================
 void setup() {
   
-  servo.attach(SERVO);
-  servo.write(set_arm_extension + ARM_OFFSET);
-  delay(100);
-  servo.detach();
+//  servo.attach(SERVO);
+//  servo.write(set_arm_extension + ARM_OFFSET);
+//  delay(100);
+//  servo.detach();
 
   pinMode(encoderPinA, INPUT);
   pinMode(encoderPinB, INPUT);
