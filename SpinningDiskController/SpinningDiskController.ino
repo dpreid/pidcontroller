@@ -460,14 +460,14 @@ void report_encoder(void)
 
 void detachEncoderInterrupts(void){
   detachInterrupt(digitalPinToInterrupt(encoderPinA));
-  //detachInterrupt(digitalPinToInterrupt(encoderPinB));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB));
   detachInterrupt(digitalPinToInterrupt(indexPin));
 }
 
 void attachEncoderInterrupts(void){
   encoder_newly_attached = true;
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
-  //attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
   attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 }
 
