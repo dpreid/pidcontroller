@@ -196,9 +196,9 @@ void Sm_State_Initialise(void){
 //TRANSITION: Stopped -> Stopped
 void Sm_State_Stopped(void){  
 
-//  if(servo.attached()){
-//    servo.detach();
-//  }
+  if(servo.attached()){
+    servo.detach();
+  }
        
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
  
@@ -365,7 +365,7 @@ void setup() {
   servo.attach(SERVO);
   servo.write(set_arm_extension + ARM_OFFSET);
   delay(100);
-  //servo.detach();
+  servo.detach();
 
   pinMode(encoderPinA, INPUT);
   pinMode(encoderPinB, INPUT);
@@ -570,10 +570,12 @@ void doIndexPin(void){
     led_index_on = !led_index_on;
     setIndexLEDs(led_index_on);
 
-    if(SmState == STATE_INITIALISE){
+//    if(SmState == STATE_INITIALISE){
+//      
+//    }
+
       initial_index_hit = true;
       encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
-    }
   
 }
 
