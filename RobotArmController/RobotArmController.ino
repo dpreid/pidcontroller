@@ -103,7 +103,7 @@ float max_timer = 60000;          //ms
 
 //for initialisation
 int kick_dir = 1;
-float kick_magnitude = 100;
+float kick_magnitude = 100.0;
 bool initial_index_hit = false;
 /**
  * Defines the valid states for the state machine
@@ -180,10 +180,10 @@ void Sm_State_Initialise(void){
 
   motor.drive(kick_dir*kick_magnitude);
   kick_magnitude += 0.1;
-  delay(100);
+  delay(300);
   //motor.brake();
 
-  if(!initial_index_hit){
+  if(initial_index_hit == false){
     SmState = STATE_INITIALISE;
   } else{
     SmState = STATE_ZERO;
