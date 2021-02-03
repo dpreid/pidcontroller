@@ -106,7 +106,6 @@ int kick_dir = 1;
 float kick_magnitude = 100.0;
 bool initial_index_hit = false;
 int index_count = 0;
-int index_positions[20];
 /**
  * Defines the valid states for the state machine
  * 
@@ -179,14 +178,15 @@ void Sm_State_Initialise(void){
   //bool index_pin = led_index_on;  //we need this to change for initialisation
   
   kick_dir = -1*kick_dir;   //reverse the direction each time
-
+  detachInterrupt(digitalPinToInterrupt(indexPin));
+  
   motor.drive(kick_dir*100);
-  delay(300);
+  delay(100);
   motor.brake();
 //  delay(100);
 //  kick_magnitude += 0.1;
   
-  
+  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 
   if(initial_index_hit == false){
     SmState = STATE_INITIALISE;
@@ -576,20 +576,8 @@ void doIndexPin(void){
     setIndexLEDs(led_index_on);
 
     if(SmState == STATE_INITIALISE){
-      index_positions[index_count] = encoderPos;
-      int same_pos = 0;
-      for(int i=0;i<20;i++){
-        if(encoderPos == index_positions[i]){
-          same_pos++;
-        }
-      }
-
-      if(same_pos > 2){
-          initial_index_hit = true;
-          encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
-      } else{
-        index_count++;
-      }
+      initial_index_hit = true;
+      encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
       
     }
 
