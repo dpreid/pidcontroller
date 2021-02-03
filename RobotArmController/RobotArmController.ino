@@ -369,7 +369,7 @@ void setup() {
 
   pinMode(encoderPinA, INPUT);
   pinMode(encoderPinB, INPUT);
-  pinMode(indexPin, INPUT);
+  pinMode(indexPin, INPUT_PULLUP);
 
   pixels.begin(); // INITIALIZE NeoPixel
   
