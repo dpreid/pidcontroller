@@ -178,9 +178,9 @@ void Sm_State_Initialise(void){
   
   kick_dir = -1*kick_dir;   //reverse the direction each time
 
-  motor.drive(kick_dir*100.0);
-  //kick_magnitude += 0.1;
-  delay(300);
+  motor.drive(kick_dir*kick_magnitude);
+  kick_magnitude += 0.1;
+  delay(100);
   motor.brake();
 
   if(initial_index_hit == false){
@@ -362,13 +362,13 @@ void TimerInterrupt(void){
 // SETUP AND LOOP==================================================================================
 void setup() {
   
-//  servo.attach(SERVO);
-//  servo.write(set_arm_extension + ARM_OFFSET);
-//  delay(100);
-//  servo.detach();
+  servo.attach(SERVO);
+  servo.write(set_arm_extension + ARM_OFFSET);
+  delay(100);
+  //servo.detach();
 
-  pinMode(encoderPinA, INPUT);
-  pinMode(encoderPinB, INPUT);
+  pinMode(encoderPinA, INPUT_PULLUP);
+  pinMode(encoderPinB, INPUT_PULLUP);
   pinMode(indexPin, INPUT_PULLUP);
 
   pixels.begin(); // INITIALIZE NeoPixel
