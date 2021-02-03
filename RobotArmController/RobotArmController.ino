@@ -180,9 +180,9 @@ void Sm_State_Initialise(void){
   
   kick_dir = -1*kick_dir;   //reverse the direction each time
 
-//  motor.drive(kick_dir*kick_magnitude);
-//  delay(300);
-//  motor.brake();
+  motor.drive(kick_dir*100);
+  delay(300);
+  motor.brake();
 //  delay(100);
 //  kick_magnitude += 0.1;
   
