@@ -281,7 +281,7 @@ void Sm_State_Zero(void){
 
   //encoderPos = 0;   //no need to do it here as is done in index interrupt.
 
-  delay(100);
+  //delay(100);
   
   //report_encoder();
   if((encoderPos > zero_error || encoderPos < -zero_error)){    //allowed calibration error
