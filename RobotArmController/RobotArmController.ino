@@ -82,9 +82,9 @@ int position_limit = 300;   //the soft position limit either side of the zero po
 int position_motor_off = 400;   //the maximum position to which the motor will run before switching to AWAITING_STOP
 int arm_min = 60;           //the range of positions for the servo connected to the arm
 int arm_max = 120;
-float zero_error = 10;
-float zero_signal = 30;     //the motor signal for zeroing the position.
-float zero_offset = -200;    //the encoderPos difference between index and digger arm 0 position
+float zero_error = 10.0;
+float zero_signal = 30.0;     //the motor signal for zeroing the position.
+float zero_offset = -200.0;    //the encoderPos difference between index and digger arm 0 position
 
 int pid_interval = 20;       //ms, for timer interrupt
 
@@ -274,7 +274,7 @@ void Sm_State_Zero(void){
   } else{
     motor.drive(-zero_signal);
   }
-  zero_signal += 0.000001;
+  zero_signal += 0.1;
   //motor.brake();
 
   //encoderPos = 0;   //no need to do it here as is done in index interrupt.
