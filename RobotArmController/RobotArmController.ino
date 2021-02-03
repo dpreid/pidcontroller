@@ -163,7 +163,7 @@ int NUM_STATES = 7;
  * Stores the current state of the state machine
  */
  
-StateType SmState = STATE_STOPPED;    //START IN THE INITIALISE STATE
+StateType SmState = STATE_INITIALISE;    //START IN THE INITIALISE STATE
 
 //DEFINE STATE MACHINE FUNCTIONS================================================================
 
@@ -180,11 +180,11 @@ void Sm_State_Initialise(void){
   
   kick_dir = -1*kick_dir;   //reverse the direction each time
 
-  motor.drive(kick_dir*kick_magnitude);
-  delay(300);
-  motor.brake();
-  delay(100);
-  kick_magnitude += 0.1;
+//  motor.drive(kick_dir*kick_magnitude);
+//  delay(300);
+//  motor.brake();
+//  delay(100);
+//  kick_magnitude += 0.1;
   
   
 
