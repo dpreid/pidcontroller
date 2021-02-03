@@ -181,7 +181,7 @@ void Sm_State_Initialise(void){
   motor.drive(kick_dir*kick_magnitude);
   kick_magnitude += 0.1;
   delay(100);
-  motor.brake();
+  //motor.brake();
 
   if(!initial_index_hit){
     SmState = STATE_INITIALISE;
