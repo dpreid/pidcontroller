@@ -271,7 +271,7 @@ void Sm_State_PID_Position(void){
 void Sm_State_Zero(void){
 //when arm passes through index, during initialisation, the encoderPos = 0.
 
-  if(encoderPos >= 0){
+  if(encoderPos > 0){
      motor.drive(zero_signal);
   } else{
     motor.drive(-zero_signal);
