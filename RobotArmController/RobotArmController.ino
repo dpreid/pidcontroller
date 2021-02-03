@@ -163,7 +163,7 @@ int NUM_STATES = 7;
  * Stores the current state of the state machine
  */
  
-StateType SmState = STATE_INITIALISE;    //START IN THE INITIALISE STATE
+StateType SmState = STATE_STOPPED;    //START IN THE INITIALISE STATE
 
 //DEFINE STATE MACHINE FUNCTIONS================================================================
 
