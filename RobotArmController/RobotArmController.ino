@@ -103,6 +103,7 @@ float max_timer = 60000;          //ms
 
 //for initialisation
 int kick_dir = 1;
+float kick_magnitude = 100;
 bool initial_index_hit = false;
 /**
  * Defines the valid states for the state machine
@@ -177,8 +178,9 @@ void Sm_State_Initialise(void){
   
   kick_dir = -1*kick_dir;   //reverse the direction each time
 
-  motor.drive(kick_dir*100);
-  delay(300);
+  motor.drive(kick_dir*kick_magnitude);
+  kick_magnitude += 0.1;
+  delay(100);
   motor.brake();
 
   if(!initial_index_hit){
