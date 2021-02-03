@@ -106,6 +106,7 @@ int kick_dir = 1;
 float kick_magnitude = 100.0;
 bool initial_index_hit = false;
 int index_count = 0;
+int index_positions[20];
 /**
  * Defines the valid states for the state machine
  * 
@@ -573,7 +574,15 @@ void doIndexPin(void){
     setIndexLEDs(led_index_on);
 
     if(SmState == STATE_INITIALISE){
-      if(index_count > 2){
+      index_positions[index_count] = encoderPos;
+      int same_pos = 0;
+      for(int i=0;i<20;i++){
+        if(encoderPos == index_positions[i]){
+          same_pos++;
+        }
+      }
+
+      if(same_pos > 2){
           initial_index_hit = true;
           encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
       } else{
