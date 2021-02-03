@@ -105,6 +105,7 @@ float max_timer = 60000;          //ms
 int kick_dir = 1;
 float kick_magnitude = 100.0;
 bool initial_index_hit = false;
+int index_count = 0;
 /**
  * Defines the valid states for the state machine
  * 
@@ -179,9 +180,10 @@ void Sm_State_Initialise(void){
   kick_dir = -1*kick_dir;   //reverse the direction each time
 
   motor.drive(kick_dir*kick_magnitude);
+  motor.brake();
   kick_magnitude += 0.1;
   delay(100);
-  motor.brake();
+  
 
   if(initial_index_hit == false){
     SmState = STATE_INITIALISE;
@@ -367,9 +369,9 @@ void setup() {
   delay(100);
   //servo.detach();
 
-  pinMode(encoderPinA, INPUT_PULLUP);
-  pinMode(encoderPinB, INPUT_PULLUP);
-  pinMode(indexPin, INPUT_PULLUP);
+  pinMode(encoderPinA, INPUT);
+  pinMode(encoderPinB, INPUT);
+  pinMode(indexPin, INPUT);
 
   pixels.begin(); // INITIALIZE NeoPixel
   
@@ -571,8 +573,13 @@ void doIndexPin(void){
     setIndexLEDs(led_index_on);
 
     if(SmState == STATE_INITIALISE){
-      initial_index_hit = true;
-      encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
+      if(index_count > 2){
+          initial_index_hit = true;
+          encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
+      } else{
+        index_count++;
+      }
+      
     }
 
       
