@@ -570,12 +570,12 @@ void doIndexPin(void){
     led_index_on = !led_index_on;
     setIndexLEDs(led_index_on);
 
-//    if(SmState == STATE_INITIALISE){
-//      
-//    }
-
+    if(SmState == STATE_INITIALISE){
       initial_index_hit = true;
       encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
+    }
+
+      
   
 }
 
