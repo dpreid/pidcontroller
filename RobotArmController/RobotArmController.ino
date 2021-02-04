@@ -105,7 +105,7 @@ float max_timer = 60000;          //ms
 //for initialisation
 int kick_dir = 1;
 float kick_magnitude = 100.0;
-bool initial_index_hit = false;
+//bool initial_index_hit = false;
 /**
  * Defines the valid states for the state machine
  * 
@@ -200,6 +200,9 @@ StateType SmState = STATE_INITIALISE;    //START IN THE INITIALISE STATE
 //}
 
 void Sm_State_Initialise(void){
+
+  servo.write(90 + ARM_OFFSET);
+  delay(100);
   
   int extreme_1 = 0;
   int extreme_2 = 0;
@@ -576,13 +579,13 @@ void report_zero_signal(){
 void attachEncoderInterrupts(void){
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+  //attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 }
 
 void detachEncoderInterrupts(void){
   detachInterrupt(digitalPinToInterrupt(encoderPinA));
   detachInterrupt(digitalPinToInterrupt(encoderPinB));
-  detachInterrupt(digitalPinToInterrupt(indexPin));
+  //detachInterrupt(digitalPinToInterrupt(indexPin));
 }
 
 // Interrupt on A changing state

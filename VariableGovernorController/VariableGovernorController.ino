@@ -715,8 +715,8 @@ void doIndexPin(void){
       encoder_direction_index = 1;
     }
 
-    led_index_on = !led_index_on;
-    setIndexLEDs(led_index_on);
+//    led_index_on = !led_index_on;
+//    setIndexLEDs(led_index_on);
     
     if(encoder_direction_index / encoder_direction_last < 0){
       setRotationLEDs(encoderAngVel);  
