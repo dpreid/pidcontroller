@@ -330,6 +330,10 @@ void Sm_State_Zero(void){
     //index pin has been zeroed so...
     SmState = STATE_AWAITING_STOP;  
   }
+
+  if(millis() >= mode_start_time + shutdown_timer){
+    SmState = STATE_AWAITING_STOP;
+  }
 }
 
 //INDEX PIN IS ALIGNED WITH DIGGER ARM SO NO NEED FOR OFFSET
