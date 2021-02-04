@@ -83,7 +83,8 @@ int position_motor_off = 400;   //the maximum position to which the motor will r
 int arm_min = 60;           //the range of positions for the servo connected to the arm
 int arm_max = 120;
 float zero_error = 10.0;
-float zero_signal = 30.0;     //the motor signal for zeroing the position.
+float zero_signal_CCW = 30;     //the motor signal for zeroing the position.
+float zero_signal_CW = 30;
 float zero_offset = -200.0;    //the encoderPos difference between index and digger arm 0 position
 
 int pid_interval = 20;       //ms, for timer interrupt
@@ -105,7 +106,6 @@ float max_timer = 60000;          //ms
 int kick_dir = 1;
 float kick_magnitude = 100.0;
 bool initial_index_hit = false;
-int index_count = 0;
 /**
  * Defines the valid states for the state machine
  * 
@@ -168,32 +168,62 @@ StateType SmState = STATE_INITIALISE;    //START IN THE INITIALISE STATE
 
 //TRANSITION: INITIALISE --> ZERO
 //Gives the arm a kick in either direction. When the index pin is hit, initial_index_hit set to TRUE.
-void Sm_State_Initialise(void){
-
-  //servo.attach(SERVO);
-  //servo.write(90 + ARM_OFFSET);
-  //delay(100);
-  
-
-  //bool index_pin = led_index_on;  //we need this to change for initialisation
-  
-  kick_dir = -1*kick_dir;   //reverse the direction each time
-  detachInterrupt(digitalPinToInterrupt(indexPin));
-  
-  motor.drive(kick_dir*100);
-  delay(100);
-  motor.brake();
-//  delay(100);
+//void Sm_State_Initialise(void){
+//  initial_index_hit = false;
+//  
+//  //servo.attach(SERVO);
+//  //servo.write(90 + ARM_OFFSET);
+//  //delay(100);
+//  
+//
+//  //bool index_pin = led_index_on;  //we need this to change for initialisation
+//  
+//  kick_dir = -1*kick_dir;   //reverse the direction each time
+//  
+//  detachEncoderInterrupts();
+//  
+//  motor.drive(kick_dir*kick_magnitude);
+//  delay(300);
+//  motor.brake();
+////  delay(100);
 //  kick_magnitude += 0.1;
+//  
+//  attachEncoderInterrupts();
+//
+//  if(initial_index_hit == false){
+//    SmState = STATE_INITIALISE;
+//  } else{
+//    SmState = STATE_ZERO;
+//  }
+//
+//  
+//}
+
+void Sm_State_Initialise(void){
   
-  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+  int extreme_1 = 0;
+  int extreme_2 = 0;
+  unsigned long previousMillis = millis();
+  const long interval = 3000;
 
-  if(initial_index_hit == false){
-    SmState = STATE_INITIALISE;
-  } else{
-    SmState = STATE_ZERO;
+  while(millis() <= previousMillis + interval){
+      motor.drive(kick_magnitude);
   }
+  
+  extreme_1 = encoderPos;
 
+  previousMillis = millis();
+  while(millis() <= previousMillis + interval){
+      motor.drive(-kick_magnitude);
+  }
+  
+  extreme_2 = encoderPos;
+
+  float mid_point = (extreme_1 + extreme_2) / 2.0;
+  encoderPos -= mid_point;
+    
+    
+  SmState = STATE_ZERO;
   
 }
 
@@ -214,7 +244,9 @@ void Sm_State_Stopped(void){
 //TRANSITION: AWAITING_STOP -> STOPPED
 void Sm_State_Awaiting_Stop(void){
   motor.brake();
-  zero_signal = 30;       //reset zero signal
+  zero_signal_CW = 30;       //reset zero signal
+  zero_signal_CCW = 30;       //reset zero signal
+  kick_magnitude = 100.0;
   
   bool moving = true;
   int lastPos = 0;
@@ -274,17 +306,17 @@ void Sm_State_PID_Position(void){
 
 //TRANSITION: ZERO -> AWAITING_STOP
 void Sm_State_Zero(void){
-//when arm passes through index, during initialisation, the encoderPos = 0.
+//initialisation sets the 0 position of encoder
 
   if(encoderPos > 0){
-     motor.drive(zero_signal);
+     motor.drive(zero_signal_CCW);
+     zero_signal_CCW += 0.1;
   } else{
-    motor.drive(-zero_signal);
+    motor.drive(-zero_signal_CW);
+    zero_signal_CW += 0.1;
   }
-  zero_signal += 0.1;
-  //motor.brake();
-
-  //encoderPos = 0;   //no need to do it here as is done in index interrupt.
+  
+  //report_zero_signal();
 
   delay(100);
   
@@ -378,14 +410,14 @@ void setup() {
 
   pixels.begin(); // INITIALIZE NeoPixel
   
-  attachEncoderInterrupts(); 
+  attachEncoderInterrupts();
 
   float t = millis();
   previous_report_time = t;
   mode_start_time = t;
 
   Serial.setTimeout(50);
-  Serial.begin(115200);
+  Serial.begin(57600);
 
   startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
@@ -451,6 +483,9 @@ StateType readSerialJSON(StateType SmState){
         }
         else if(strcmp(new_mode, "changeArm") == 0){
           SmState = STATE_CHANGE_ARM;
+        }
+        else if(strcmp(new_mode, "initialise") == 0){
+          SmState = STATE_INITIALISE;
         }
        
       } else {
@@ -532,10 +567,22 @@ void report_encoder(void)
   
 }
 
+void report_zero_signal(){
+  Serial.print("zero signal = ");
+  Serial.println(zero_signal_CW);
+        
+}
+
 void attachEncoderInterrupts(void){
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
   attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+}
+
+void detachEncoderInterrupts(void){
+  detachInterrupt(digitalPinToInterrupt(encoderPinA));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB));
+  detachInterrupt(digitalPinToInterrupt(indexPin));
 }
 
 // Interrupt on A changing state
@@ -575,11 +622,11 @@ void doIndexPin(void){
     led_index_on = !led_index_on;
     setIndexLEDs(led_index_on);
 
-    if(SmState == STATE_INITIALISE){
-      initial_index_hit = true;
-      encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
-      
-    }
+//    if(SmState == STATE_INITIALISE){
+//      initial_index_hit = true;
+//      encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
+//      
+//    }
 
       
   
