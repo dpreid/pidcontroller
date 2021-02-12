@@ -362,7 +362,7 @@ void setup() {
   pinMode(encoderPinB, INPUT);
   pinMode(indexPin, INPUT);
 
-  //pixels.begin(); // INITIALIZE NeoPixel
+  pixels.begin(); // INITIALIZE NeoPixel
   
   attachEncoderInterrupts();
 
@@ -662,11 +662,11 @@ void doIndexPin(void){
     
 
     led_index_on = !led_index_on;
-//    setIndexLEDs(led_index_on);
-//    //digitalWrite(ledIndex, led_index_on);
-//    if(encoder_direction_index / encoder_direction_last < 0){
-//      setRotationLEDs(encoderAngVel);  
-//    }
+    setIndexLEDs(led_index_on);
+    //digitalWrite(ledIndex, led_index_on);
+    if(encoder_direction_index / encoder_direction_last < 0){
+      setRotationLEDs(encoderAngVel);  
+    }
 
     encoder_direction_last = encoder_direction_index;
 
