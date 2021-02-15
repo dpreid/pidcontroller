@@ -250,8 +250,6 @@ void Sm_State_Awaiting_Stop(void){
 
 void Sm_State_PID_Speed(void){
 
-//  PID_signal = friction_compensation_min(PID_signal, 50.0);
-
   float friction_comp_static = friction_compensation_static(PID_signal, encoderAngVel, error_speed);
   float friction_comp_dynamic = friction_compensation_dynamic(PID_signal, encoderAngVel, error_speed);
 
@@ -368,6 +366,8 @@ void setup() {
 
   //initialise time values
   float t = millis();
+  current_time_encoder = t;
+  previous_time_encoder = t;
   current_time_index = t;   
   previous_time_index = t;
   //previous_report_time = t;
@@ -616,7 +616,7 @@ void doEncoderA() {
         if(!index_interrupt){
           if(current_time_encoder > previous_time_encoder){
             encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
-            previous_time_encoder = current_time_encoder;
+//            previous_time_encoder = current_time_encoder;
             }
         } else{
           index_interrupt = false;

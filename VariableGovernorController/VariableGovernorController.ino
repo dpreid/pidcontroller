@@ -118,6 +118,8 @@ float zero_error = 10;
 float max_rpm = 1000;
 
 int pid_interval = 20.0;       //ms, for timer interrupt    +++++++++++++++++++++++++++++++++++++++++++++
+int report_integer = 1;          //an integer multiple of the pid_interval for reporting data set to 5 for speed modes, 1 for position mode.
+int report_count = 0;
 
 bool lowerLimitReached = false;
 bool isLimitInterruptAttached = false;
@@ -144,8 +146,13 @@ int sameCount = 100;
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 
 //friction compensation and lowpass filter
-float friction_comp_CW = -(1.5/12.0)*255;
-float friction_comp_CCW = (1.5/12.0)*255;
+float friction_comp_static_CW = (2.4/12.0)*255;
+float friction_comp_static_CCW = (2.3/12.0)*255;
+float friction_comp_window = 2.0;
+float friction_comp_dynamic_CW = (1.3/12.0)*255;
+float friction_comp_dynamic_CCW = (1.4/12.0)*255;
+
+
 volatile float error_position_filter = 0.0;
 volatile float previous_error_position_filter = 0.0;
 volatile float previous_previous_error_position_filter = 0.0;
@@ -290,14 +297,17 @@ void Sm_State_Awaiting_Stop(void){
 
 void Sm_State_PID_Speed(void){
 
-//  PID_signal = friction_compensation_min(PID_signal, 50.0);
+  float friction_comp_static = friction_compensation_static(PID_signal, encoderAngVel, error_speed);
+  float friction_comp_dynamic = friction_compensation_dynamic(PID_signal, encoderAngVel, error_speed);
+
+  float drive_signal = PID_signal + friction_comp_static + friction_comp_dynamic;
    
-    if(PID_signal > 255){
-      motor.drive(255);
-    } else if(PID_signal < -255){
-      motor.drive(-255);
+    if(drive_signal > 200){
+      motor.drive(200);
+    } else if(drive_signal < -200){
+      motor.drive(-200);
     } else{
-      motor.drive(PID_signal);
+      motor.drive(drive_signal);
     }
   
   //report_encoder();  
@@ -312,13 +322,17 @@ void Sm_State_PID_Speed(void){
 void Sm_State_PID_Position(void){
 
 //    PID_signal = friction_compensation_min(PID_signal, 10.0);
+    float friction_comp_static = friction_compensation_static(PID_signal, encoderAngVel, error);
+  float friction_comp_dynamic = friction_compensation_dynamic(PID_signal, encoderAngVel, error);
+
+  float drive_signal = PID_signal + friction_comp_static + friction_comp_dynamic;
     
-    if(PID_signal > 255){
-      motor.drive(255);
-    } else if(PID_signal < -255){
-      motor.drive(-255);
+    if(drive_signal > 200){
+      motor.drive(200);
+    } else if(drive_signal < -200){
+      motor.drive(-200);
     } else{
-      motor.drive(PID_signal);
+      motor.drive(drive_signal);
     }
   
   //report_encoder();
@@ -423,7 +437,6 @@ void Sm_Run(void)
 
 //This function is run on a timer interrupt defined by pid_interval/timer_interrupt_freq.
 void TimerInterrupt(void){
-  report_encoder();       //NEW ++++++++++++++++++++++++++ report encoder on timer interrupt at pid_interval period.
   timer_interrupt = true;
   
   if(SmState == STATE_PID_SPEED_MODE){
@@ -431,6 +444,13 @@ void TimerInterrupt(void){
   } else if(SmState == STATE_PID_POSITION_MODE){
     calculatePositionPID();
   }
+
+  report_count++;
+  if(report_count >= report_integer){
+    report_encoder();       //NEW ++++++++++++++++++++++++++ report encoder on timer interrupt at pid_interval period.
+    report_count = 0;
+  }
+  
 }
 
 // SETUP AND LOOP==================================================================================
@@ -465,6 +485,8 @@ void setup() {
 
   //initialise time values
   float t = millis();
+  current_time_encoder = t;
+  previous_time_encoder = t;
   current_time_index = t;   
   previous_time_index = t;
   previous_report_time = t;
@@ -543,13 +565,16 @@ StateType readSerialJSON(StateType SmState){
       if(SmState == STATE_STOPPED){
         
         if(strcmp(new_mode, "speedPid") == 0){
+          report_integer = 5; 
           resetPIDSignal();
           SmState = STATE_PID_SPEED_MODE;
         } 
         else if(strcmp(new_mode, "speedRaw") == 0){
+          report_integer = 5;
           SmState = STATE_DC_MOTOR_MODE;
         }
         else if(strcmp(new_mode, "positionPid") == 0){
+          report_integer = 1;
           resetPIDSignal();
           encoderWrapCW = 0;
           encoderWrapCCW = 0;
@@ -633,6 +658,10 @@ void resetPIDSignal(void){
   error_position_filter = 0;
   previous_error_position_filter = 0;
   previous_previous_error_position_filter = 0;
+
+  proportional_term = 0.0;
+  integral_term = 0.0;
+  derivative_term = 0.0;
   
 }
 
@@ -642,7 +671,6 @@ void resetPIDSignal(void){
 void report_encoder(void)
 {
   unsigned long current_time = millis();
- //if (current_time >= previous_report_time + report_interval){
 
   detachEncoderInterrupts();
   
@@ -659,17 +687,17 @@ void report_encoder(void)
     Serial.print(encoderAngVel);
     Serial.print(",\"time\":");
     Serial.print(current_time); 
+    Serial.print(",\"p_sig\":");
+    Serial.print(proportional_term);
+    Serial.print(",\"i_sig\":");
+    Serial.print(integral_term);
+    Serial.print(",\"d_sig\":");
+    Serial.print(derivative_term);
     Serial.println("}");
 }
 
-
-//   previous_report_time = current_time;
-
   attachEncoderInterrupts();
-// }
-  
-  
-  
+
 }
 
 void detachEncoderInterrupts(void){
@@ -718,27 +746,25 @@ void doEncoderA() {
     }
 
   if(A_set){
+    current_time_encoder = micros();
     if(!encoder_newly_attached){
       if(!timer_interrupt){
         if(!index_interrupt){
-          current_time_encoder = micros();
           if(current_time_encoder > previous_time_encoder){
             encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
-            previous_time_encoder = current_time_encoder;
+//            previous_time_encoder = current_time_encoder;
             }
         } else{
-          previous_time_encoder = micros();
           index_interrupt = false;
         }
          
       } else{
-        previous_time_encoder = micros();
         timer_interrupt = false;
       }
     } else{
-      previous_time_encoder = micros();
       encoder_newly_attached = false;
     }
+  previous_time_encoder = current_time_encoder;
 
   }
 
@@ -801,7 +827,7 @@ void calculateSpeedPID(void){
     previous_previous_error_speed_filter = previous_error_speed_filter;
     previous_error_speed_filter = error_speed_filter;
 
-    error_speed = set_speed - encoderAngVel;
+    error_speed = (set_speed - encoderAngVel)/100.0;
 
     error_speed_filter = lowpass_filter(error_speed, previous_error_speed_filter);
   
@@ -809,67 +835,25 @@ void calculateSpeedPID(void){
   float Ti = Kp/Ki;
   float Td = Kd/Kp;
 
-  
- float new_signal = Kp*(error_speed - previous_error_speed + delta_t*error_speed/Ti +(Td/delta_t)*(error_speed_filter - 2*previous_error_speed_filter + previous_previous_error_speed_filter));
+  float delta_p = Kp*(error_speed - previous_error_speed);
+  proportional_term += delta_p;
 
+  float delta_i = Kp*delta_t*error_speed/Ti;
+  integral_term += delta_i;
+
+   float delta_d = Kp*(Td/delta_t)*(error_speed_filter - 2*previous_error_speed_filter + previous_previous_error_speed_filter);
+  derivative_term += delta_d; 
+
+  
+ //float new_signal = Kp*(error_speed - previous_error_speed + delta_t*error_speed/Ti +(Td/delta_t)*(error_speed_filter - 2*previous_error_speed_filter + previous_previous_error_speed_filter));
+
+  float new_signal = delta_p + delta_i + delta_d;
+  
   PID_signal += new_signal;
     
 }
 
-//DISCRETE TIME VERSION, NO FILTER
-//void calculateSpeedPID(void){
-//    previous_previous_error_speed = previous_error_speed;
-//    previous_error_speed = error_speed;
-//
-//    error_speed = set_speed - encoderAngVel;
-//  
-//  float delta_t = pid_interval/1000.0;
-//  float Ti = Kp/Ki;
-//  float Td = Kd/Kp;
-//
-//  
-// float new_signal = Kp*(error_speed - previous_error_speed + delta_t*error_speed/Ti +(Td/delta_t)*(error_speed - 2*previous_error_speed + previous_previous_error_speed));
-//
-//  PID_signal += new_signal;
-//    
-//}
-
-//DISCRETE TIME VERSION with filter
-//void calculatePositionPID(void){
-//    previous_previous_error = previous_error;
-//    previous_error = error;
-//
-//    previous_previous_error_position_filter = previous_error_position_filter;
-//    previous_error_position_filter = error_position_filter;
-//    
-//  float error_pos = encoderPos - set_position;
-//  int dir = error_pos / abs(error_pos);    //should be +1 or -1.
-//  
-//  float error_pos_inverse = 2*position_limit - abs(error_pos);
-//
-//  if(abs(error_pos) <= abs(error_pos_inverse)){
-//    error = error_pos;
-//  } else {
-//    error = -1*dir*error_pos_inverse;
-//  }
-//  //convert error to an angular error in deg
-//  error = error*180/position_limit;
-//
-//  error_position_filter = lowpass_filter(error, previous_error_position_filter);
-//  
-//  
-//  float delta_t = pid_interval/1000.0;
-//  float Ti = Kp/Ki;
-//  float Td = Kd/Kp;
-//  
-// float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error_position_filter - 2*previous_error_position_filter + previous_previous_error_position_filter));
-//
-//  PID_signal += new_signal;
-//    
-//
-//}
-
-//DISCRETE TIME, LOWPASS FILTER, DEADBAND
+////DISCRETE TIME VERSION with filter
 void calculatePositionPID(void){
     previous_previous_error = previous_error;
     previous_error = error;
@@ -888,7 +872,7 @@ void calculatePositionPID(void){
     error = -1*dir*error_pos_inverse;
   }
   //convert error to an angular error in deg
-  error = error*180/position_limit;
+  error = error*180.0/position_limit;
 
   error_position_filter = lowpass_filter(error, previous_error_position_filter);
   
@@ -897,86 +881,61 @@ void calculatePositionPID(void){
   float Ti = Kp/Ki;
   float Td = Kd/Kp;
 
-  float new_signal_KpKi = Kp*(error - previous_error + delta_t*error/Ti);
-  float new_signal_Kd = Kp*(Td/delta_t)*(error_position_filter - 2*previous_error_position_filter + previous_previous_error_position_filter);
-  
- //float new_signal = new_signal_KpKi + new_signal_Kd;
+  float delta_p = Kp*(error - previous_error);
+  proportional_term += delta_p;
 
-  PID_signal += new_signal_KpKi;
-  PID_signal = deadband(PID_signal, 10);
-  PID_signal += new_signal_Kd;
+  float delta_i = Kp*delta_t*error/Ti;
+  integral_term += delta_i;
+
+  float delta_d =  Kp*(Td/delta_t)*(error_position_filter - 2*previous_error_position_filter + previous_previous_error_position_filter);
+  derivative_term += delta_d; 
+  
+ //float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error_position_filter - 2*previous_error_position_filter + previous_previous_error_position_filter));
+  
+  float new_signal = delta_p + delta_i + delta_d;
+  
+  PID_signal += new_signal;
     
 
 }
 
-//DISCRETE TIME VERSION NO FILTER
-//void calculatePositionPID(void){
-//    previous_previous_error = previous_error;
-//    previous_error = error;
-//    
-//  float error_pos = encoderPos - set_position;
-//  int dir = error_pos / abs(error_pos);    //should be +1 or -1.
-//  
-//  float error_pos_inverse = 2*position_limit - abs(error_pos);
-//
-//  if(abs(error_pos) <= abs(error_pos_inverse)){
-//    error = error_pos;
-//  } else {
-//    error = -1*dir*error_pos_inverse;
-//  }
-//  //convert error to an angular error in deg
-//  error = error*180/position_limit;
-//  
-//  
-//  float delta_t = pid_interval/1000.0;
-//  float Ti = Kp/Ki;
-//  float Td = Kd/Kp;
-//  
-// float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error - 2*previous_error + previous_previous_error));
-//
-//  PID_signal += new_signal;
-//    
-//
-//}
 
 float lowpass_filter(float input, float previous_output){
   float a = 0.1;
   return (1-a)*previous_output + a*input;
 }
 
-float friction_compensation_add(float drive_signal, float encoderAngVel){
-  if(abs(drive_signal) > 0){
-      if(abs(encoderAngVel) <= 50){
-        if(drive_signal < 0){
-          drive_signal += friction_comp_CW;
-      } else if(drive_signal > 0){
-          drive_signal += friction_comp_CCW;
-      }
-    } else{
-      if(encoderAngVel < 0){
-        drive_signal += friction_comp_CW;
-      } else if(encoderAngVel > 0){
-        drive_signal += friction_comp_CCW;
-      }
-    }
+float friction_compensation_static(float drive_signal, float encoderAngVel, float error){
+ //static
+ 
+ if(abs(encoderAngVel) < 5 && abs(drive_signal) > 0){
+  if(error > friction_comp_window){
+    return friction_comp_static_CCW;
+  } else if(error < -friction_comp_window){
+    return -friction_comp_static_CW;
+  } else if(error > 0){
+    return friction_comp_static_CCW * error/friction_comp_window;
+  } else {
+    return -friction_comp_static_CW * error/friction_comp_window;
   }
-
-  return drive_signal;
+ }
+  
+ 
 }
 
-float friction_compensation_min(float drive_signal, float min_signal){
-  if(abs(drive_signal) < min_signal){
-      if(drive_signal < 0){
-        return -1*min_signal;
-      } else if(drive_signal > 0){
-        return min_signal;
-      } else {
-        return 0.0;
-      }
-  } else{
-    return drive_signal;
+//dynamic friction, no window
+float friction_compensation_dynamic(float drive_signal, float encoderAngVel, float error){
+  if(abs(encoderAngVel) > 5){
+    if(drive_signal > 0){
+      return friction_comp_dynamic_CCW;
+   } else if(drive_signal < 0){
+        return -friction_comp_dynamic_CW;
+   } else {
+      return 0.0;
+    }
   }
-
+  
+ 
 }
 
 float deadband(float input, float band){
