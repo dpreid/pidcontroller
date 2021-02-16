@@ -225,9 +225,9 @@ void Sm_State_Initialise(void){
 //TRANSITION: Stopped -> Stopped
 void Sm_State_Stopped(void){  
 
-  if(servo.attached()){
-    servo.detach();
-  }
+//  if(servo.attached()){
+//    servo.detach();
+//  }
        
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
  
