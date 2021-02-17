@@ -43,6 +43,8 @@ volatile int encoder_direction_index = 1;
 volatile int encoder_positive_count = 0;
 volatile int encoder_negative_count = 0;
 
+volatile int encoder_count = 0; //added TDD 2021-02-17
+
 unsigned long current_time_encoder = 0;
 unsigned long previous_time_encoder = 0;
 unsigned long current_time_index = 0;
@@ -535,6 +537,9 @@ void report_encoder(void)
     Serial.print(encoderPos);
     Serial.print(",\"enc_ang_vel\":");
     Serial.print(encoderAngVel);
+	Serial.print(",\"enc_count\":");
+	Serial.print(encoder_count);
+	encoder_count = 0; //TDD hack for quick check on consistency of encoder count bearing in mind report timing is variable.
     Serial.print(",\"time\":");
     Serial.print(current_time); 
     Serial.print(",\"p_sig\":");
@@ -562,7 +567,7 @@ void detachEncoderInterrupts(void){
 void attachEncoderInterrupts(void){
   encoder_newly_attached = true;
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
   attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
 }
 
