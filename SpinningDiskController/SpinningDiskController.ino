@@ -26,6 +26,8 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define encoderPinB 2
 #define indexPin 11
 
+bool do_report_encoder = false;
+
 bool debug = false;
 //unsigned long report_interval = 10;   //ms
 //unsigned long previous_report_time = 0;
@@ -102,8 +104,8 @@ float timer_interrupt_freq = 1000.0/pid_interval;
 
 //hardware mode switch off timer
 float mode_start_time = 0;        //ms
-float shutdown_timer = 30000;     //ms
-float max_timer = 60000;          //ms
+float shutdown_timer = 120000;     //ms was 30sec
+float max_timer = 120000;          //ms was 60sec
 
 int encoderWrapCW = 0;
 int encoderWrapCCW = 0;
@@ -317,7 +319,7 @@ void TimerInterrupt(void){
 
   report_count++;
   if(report_count >= report_integer){
-    report_encoder();       //NEW ++++++++++++++++++++++++++ report encoder on timer interrupt at pid_interval period.
+    do_report_encoder = true;       //NEW ++++++++++++++++++++++++++ report encoder on timer interrupt at pid_interval period.
     report_count = 0;
   }
   
@@ -354,7 +356,11 @@ void setup() {
 }
 
 void loop() {
-  
+  // check flags here for long tasks triggered by interrupts
+  if (do_report_encoder) {
+	report_encoder();
+	do_report_encoder = false;
+  }
   Sm_Run();  
 }
 
@@ -510,7 +516,7 @@ void report_encoder(void)
 {
   unsigned long current_time = millis();
  
-  detachEncoderInterrupts();
+  //detachEncoderInterrupts();
   
   if (encoderPlain){
     Serial.print("position = ");
@@ -531,10 +537,14 @@ void report_encoder(void)
     Serial.print(integral_term);
     Serial.print(",\"d_sig\":");
     Serial.print(derivative_term);
+	Serial.print(",\"sp\":");
+	Serial.print(set_position);
+	Serial.print(",\"sv\":");
+	Serial.print(set_speed);	
     Serial.println("}");
 }
 
-  attachEncoderInterrupts();
+  //attachEncoderInterrupts();
 }
 
 void detachEncoderInterrupts(void){
