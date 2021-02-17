@@ -196,12 +196,6 @@ void Sm_State_Stopped(void){
 void Sm_State_Awaiting_Stop(void){
   motor.brake();
   
-//  bool moving = true;
-//  int lastPos = 0;
-//  int thisPos = 0;
-//  int sameCount = sameNeeded;   //sameNeeded has become a global variable
-  
-  
 //  while (moving)
 //  {
     awaiting_stop_lastPos = awaiting_stop_thisPos;
@@ -212,29 +206,7 @@ void Sm_State_Awaiting_Stop(void){
     else{
       sameCount = sameNeeded;
     }
-//    unsigned long current_time = millis();
-//    if(current_time >= previous_report_time + pid_interval){
-//      detachEncoderInterrupts();
-//        if (encoderPlain){
-//          Serial.println(encoderPos);
-//        }
-//      else{
-//        Serial.print("{\"awaiting_stop\":true,\"enc\":");
-//        Serial.print(encoderPos);
-//        Serial.print(",\"enc_ang_vel\":");
-//        Serial.print(encoderAngVel);
-////        Serial.print(",\"sameCount\":");
-////        Serial.print(sameCount);
-//        Serial.print(",\"time\":");
-//        Serial.print(current_time);      
-//        Serial.println("}");
-//
-//      }
-//
-//      previous_report_time = current_time;
-//      attachEncoderInterrupts();
-//    }
-    
+
       
     if (sameCount <= 0){
       moving = false;
@@ -306,8 +278,6 @@ void Sm_State_DC_Motor(void){
   float drive_signal = set_speed*1.275;
 
 
-//  drive_signal = friction_compensation_min(drive_signal, 50.0);
-  
   motor.drive(drive_signal);     //max signal = 127.5 (6V/12V * 255)
   
   //report_encoder();
@@ -766,8 +736,6 @@ void calculatePositionPID(void){
   float delta_d =  Kp*(Td/delta_t)*(error_position_filter - 2*previous_error_position_filter + previous_previous_error_position_filter);
   derivative_term += delta_d; 
   
- //float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error_position_filter - 2*previous_error_position_filter + previous_previous_error_position_filter));
-  
   float new_signal = delta_p + delta_i + delta_d;
   
   PID_signal += new_signal;
@@ -820,25 +788,6 @@ float friction_compensation_dynamic(float drive_signal, float encoderAngVel, flo
   }
  
 }
-
-
-//dynamic friction with window
-//float friction_compensation_dynamic(float drive_signal, float encoderAngVel, float error){
-//  if(abs(error) > friction_comp_window){
-//    if(drive_signal > 0){
-//      return friction_comp_dynamic;
-// } else if(drive_signal < 0){
-//      return -friction_comp_dynamic;
-// } else {
-//    return 0.0;
-//  }
-// } else if(error > 0){
-//  return friction_comp_dynamic * error/friction_comp_window;
-// } else{
-//  return -friction_comp_dynamic * error/friction_comp_window;
-// }
-// 
-//}
 
 void setStepperLEDs(float value){
   if(value > 0){
