@@ -26,6 +26,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define SERVO 18
 Servo servo;
 volatile float set_arm_extension = 90.0;   //the position of the servo motor for extending arm: angle (degrees) between 0 and 180.
+#define ARM_OFFSET 0.0
  
 #define encoderPinA 3     //these pins all have interrupts on them.
 #define encoderPinB 2
@@ -39,8 +40,11 @@ bool encoderPlain = false;
 //for both PID modes and error calculations
 volatile int encoderPos = 0;
 volatile int encoderPosLast = 0;
+volatile float encoderAngVel = 0;
 volatile int encoder_direction_index = 1;
 
+unsigned long current_time_encoder = 0;
+unsigned long previous_time_encoder = 0;
 //other user set values
 float set_position = 0;     //the position the user has set
 
@@ -78,15 +82,19 @@ MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 
 int position_max = 1000;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 int position_limit = 300;   //the soft position limit either side of the zero point.
+int position_motor_off = 400;   //the maximum position to which the motor will run before switching to AWAITING_STOP
 int arm_min = 60;           //the range of positions for the servo connected to the arm
 int arm_max = 120;
-float zero_error = 10;
-float zero_offset = -200;    //the encoderPos difference between index and digger arm 0 position
+float zero_error = 10.0;
+float zero_signal_CCW = 30;     //the motor signal for zeroing the position.
+float zero_signal_CW = 30;
+float zero_offset = -200.0;    //the encoderPos difference between index and digger arm 0 position
 
 int pid_interval = 20;       //ms, for timer interrupt
 
-int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
-
+bool encoder_newly_attached = false;
+bool timer_interrupt = false;
+bool index_interrupt = false;
 
 #define CPU_HZ 48000000
 #define TIMER_PRESCALER_DIV 1024
@@ -97,8 +105,30 @@ float mode_start_time = 0;        //ms
 float shutdown_timer = 30000;     //ms
 float max_timer = 60000;          //ms
 
+bool moving = true;
+int awaiting_stop_lastPos = 0;
+int awaiting_stop_thisPos = 0;
+int sameCount = 100;   
+int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
+
 //for initialisation
 int kick_dir = 1;
+float kick_magnitude = 100.0;
+//bool initial_index_hit = false;
+
+float friction_comp_static_CW = (1.0/12.0)*255;
+float friction_comp_static_CCW = (1.0/12.0)*255;
+float friction_comp_window = 5.0;
+float friction_comp_dynamic_CW = (0.5/12.0)*255;
+float friction_comp_dynamic_CCW = (0.5/12.0)*255;
+
+//lowpass filter
+volatile float error_position_filter = 0.0;
+volatile float previous_error_position_filter = 0.0;
+volatile float previous_previous_error_position_filter = 0.0;
+volatile float error_speed_filter = 0.0;
+volatile float previous_error_speed_filter = 0.0;
+volatile float previous_previous_error_speed_filter = 0.0;
 
 /**
  * Defines the valid states for the state machine
@@ -160,23 +190,34 @@ StateType SmState = STATE_INITIALISE;    //START IN THE INITIALISE STATE
 
 //DEFINE STATE MACHINE FUNCTIONS================================================================
 
-//TRANSITION: INITIALISE --> ZERO
 void Sm_State_Initialise(void){
 
-  bool index_pin = led_index_on;  //we need this to change for initialisation
+  servo.write(90 + ARM_OFFSET);
+  delay(100);
   
-  kick_dir = -1*kick_dir;   //reverse the direction each time
+  int extreme_1 = 0;
+  int extreme_2 = 0;
+  unsigned long previousMillis = millis();
+  const long interval = 3000;
 
-  motor.drive(kick_dir*100);
-  delay(300);
-  motor.brake();
-
-  if(index_pin == led_index_on){
-    SmState = STATE_INITIALISE;
-  } else{
-    SmState = STATE_ZERO;
+  while(millis() <= previousMillis + interval){
+      motor.drive(kick_magnitude);
   }
+  
+  extreme_1 = encoderPos;
 
+  previousMillis = millis();
+  while(millis() <= previousMillis + interval){
+      motor.drive(-kick_magnitude);
+  }
+  
+  extreme_2 = encoderPos;
+
+  float mid_point = (extreme_1 + extreme_2) / 2.0;
+  encoderPos -= mid_point;
+    
+    
+  SmState = STATE_ZERO;
   
 }
 
@@ -184,90 +225,81 @@ void Sm_State_Initialise(void){
 //TRANSITION: Stopped -> Stopped
 void Sm_State_Stopped(void){  
 
-  if(servo.attached()){
-    servo.detach();
-  }
+//  if(servo.attached()){
+//    servo.detach();
+//  }
        
   set_position = encoderPos;   //reset the user set values so that when it re-enters a PID mode it doesn't start instantly
  
-  report_encoder();
+  //report_encoder();
   SmState = STATE_STOPPED;
 }
 
-//TRANSITION: AWAITING_STOP -> STOPPED
+
 void Sm_State_Awaiting_Stop(void){
   motor.brake();
   
-  bool moving = true;
-  int lastPos = 0;
-  int thisPos = 0;
-  int sameCount = sameNeeded;   //sameNeeded has become a global variable
-  while (moving)
-  {
-    lastPos = thisPos;
-    thisPos = encoderPos;
-    if (thisPos == lastPos){
+    awaiting_stop_lastPos = awaiting_stop_thisPos;
+    awaiting_stop_thisPos = encoderPos;
+    if (awaiting_stop_thisPos == awaiting_stop_lastPos){
       sameCount = sameCount - 1;
     }
     else{
       sameCount = sameNeeded;
     }
-      if (encoderPlain){
-        Serial.println(encoderPos);
-      }
-      else{
-        Serial.print("{\"awaiting_stop\":true,\"enc\":");
-        Serial.print(encoderPos);
-        Serial.print(",\"sameCount\":");
-        Serial.print(sameCount);
-        Serial.print(",\"time\":");
-        Serial.print(millis());      
-        Serial.println("}");
-      }
+    
+      
     if (sameCount <= 0){
       moving = false;
+      Serial.println("{\"awaiting_stop\":true}");
+       SmState = STATE_STOPPED;    //transition to the stopped state.
+    } else{
+      SmState = STATE_AWAITING_STOP;
     }
-  }
 
-  SmState = STATE_STOPPED;    //transition to the stopped state.
+ 
 }
 
 //TRANSITION: PID_POSITION -> PID_POSITION
 void Sm_State_PID_Position(void){
 
-    if(PID_signal > 255){
-      motor.drive(255);
-    } else if(PID_signal < -255){
-      motor.drive(-255);
+  float friction_comp_static = friction_compensation_static(PID_signal, encoderAngVel, error);
+  float friction_comp_dynamic = friction_compensation_dynamic(PID_signal, error);
+
+  float drive_signal = PID_signal + friction_comp_static + friction_comp_dynamic;
+
+    if(drive_signal > 200){
+      motor.drive(200);
+    } else if(drive_signal < -200){
+      motor.drive(-200);
     } else{
-      motor.drive(PID_signal);
+      motor.drive(drive_signal);
     }
   
-  report_encoder();
+  //report_encoder();
   SmState = STATE_PID_POSITION_MODE;
 
-  if(millis() >= mode_start_time + shutdown_timer && set_position != encoderPos){
+  if(millis() >= mode_start_time + shutdown_timer){
+    SmState = STATE_AWAITING_STOP;
+  } else if(abs(encoderPos) > position_motor_off){
     SmState = STATE_AWAITING_STOP;
   }
 
 }
 
-//TRANSITION: ZERO -> OFFSET
+//TRANSITION: ZERO -> AWAITING_STOP
 void Sm_State_Zero(void){
+//initialisation sets the 0 position of encoder
 
-  bool index_state = led_index_on;
-  float starting_signal = 30;
-  while(index_state == led_index_on){
-    if(encoderPos >= 0){
-       motor.drive(starting_signal);
-    } else{
-      motor.drive(-starting_signal);
-    }
-    starting_signal += 0.000001;
+  if(encoderPos > 0){
+     motor.drive(zero_signal_CCW);
+     zero_signal_CCW += 0.1;
+  } else{
+    motor.drive(-zero_signal_CW);
+    zero_signal_CW += 0.1;
   }
-  motor.brake();
-
-  encoderPos = 0;
+  
+  //report_zero_signal();
 
   delay(100);
   
@@ -276,8 +308,11 @@ void Sm_State_Zero(void){
     SmState = STATE_ZERO;  
   } else{
     //index pin has been zeroed so...
-    //transition to OFFSET STATE
     SmState = STATE_AWAITING_STOP;  
+  }
+
+  if(millis() >= mode_start_time + shutdown_timer){
+    SmState = STATE_AWAITING_STOP;
   }
 }
 
@@ -317,8 +352,9 @@ void Sm_State_Change_Arm(void){
   }
 
   //if the servo set position has changed since the last call to write then call write
-  if(servo.read() != set_arm_extension){
-      servo.write(set_arm_extension);
+  float new_position = set_arm_extension + ARM_OFFSET;
+  if(servo.read() != new_position){
+      servo.write(new_position);
       delay(100);
   }
 
@@ -342,18 +378,22 @@ void Sm_Run(void)
 
 //This function is run on a timer interrupt defined by pid_interval/timer_interrupt_freq.
 void TimerInterrupt(void){
+  timer_interrupt = true;
+  
   if(SmState == STATE_PID_POSITION_MODE){
      calculatePositionPID();
   } 
+
+  report_encoder();
 }
 
 // SETUP AND LOOP==================================================================================
 void setup() {
   
   servo.attach(SERVO);
-  servo.write(set_arm_extension);
-  delay(1000);
-  servo.detach();
+  servo.write(set_arm_extension + ARM_OFFSET);
+  delay(100);
+  //servo.detach();
 
   pinMode(encoderPinA, INPUT);
   pinMode(encoderPinB, INPUT);
@@ -361,14 +401,16 @@ void setup() {
 
   pixels.begin(); // INITIALIZE NeoPixel
   
-  attachEncoderInterrupts(); 
+  attachEncoderInterrupts();
 
   float t = millis();
+  current_time_encoder = t;
+  previous_time_encoder = t;
   previous_report_time = t;
   mode_start_time = t;
 
   Serial.setTimeout(50);
-  Serial.begin(115200);
+  Serial.begin(57600);
 
   startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
@@ -426,6 +468,7 @@ StateType readSerialJSON(StateType SmState){
 
       if(SmState == STATE_STOPPED){
         if(strcmp(new_mode, "positionPid") == 0){
+          resetPIDSignal();
           SmState = STATE_PID_POSITION_MODE;
         }
         else if(strcmp(new_mode, "zero") == 0){
@@ -433,6 +476,9 @@ StateType readSerialJSON(StateType SmState){
         }
         else if(strcmp(new_mode, "changeArm") == 0){
           SmState = STATE_CHANGE_ARM;
+        }
+        else if(strcmp(new_mode, "initialise") == 0){
+          SmState = STATE_INITIALISE;
         }
        
       } else {
@@ -484,40 +530,67 @@ void resetPIDSignal(void){
   PID_signal = 0;
   previous_PID_signal = 0;
   previous_previous_PID_signal = 0;
+  
   error = 0;
   previous_error = 0;
   previous_previous_error = 0;
+
+  error_position_filter = 0;
+  previous_error_position_filter = 0;
+  previous_previous_error_position_filter = 0;
+
+  proportional_term = 0.0;
+  integral_term = 0.0;
+  derivative_term = 0.0;
 }
 
 
-//outputs encoder position and ang vel to serial bus.
+//outputs encoder position to serial bus.
+//NEW++++++++++++++++++++ RUNS ON TIMER INTERRUPT
 void report_encoder(void)
 {
   unsigned long current_time = millis();
- if (current_time >= previous_report_time + report_interval){
+ 
+  detachEncoderInterrupts();
   
-      if (encoderPlain){
-        Serial.print("position = ");
-        Serial.println(encoderPos);
-      }
-      else{
-        Serial.print("{\"enc\":");
-        Serial.print(encoderPos);
-        Serial.print(",\"time\":");
-        Serial.print(current_time);  
-        Serial.println("}");
-      }
+  if (encoderPlain){
+    Serial.print("position = ");
+    Serial.println(encoderPos);
+  }
+  else{
+    Serial.print("{\"enc\":");
+    Serial.print(encoderPos);
+    Serial.print(",\"time\":");
+    Serial.print(current_time); 
+    Serial.print(",\"p_sig\":");
+    Serial.print(proportional_term);
+    Serial.print(",\"i_sig\":");
+    Serial.print(integral_term);
+    Serial.print(",\"d_sig\":");
+    Serial.print(derivative_term);
+    Serial.println("}");
+}
 
-      previous_report_time = current_time;
+  attachEncoderInterrupts();
+}
 
-    }
-  
+void report_zero_signal(){
+  Serial.print("zero signal = ");
+  Serial.println(zero_signal_CW);
+        
 }
 
 void attachEncoderInterrupts(void){
+  encoder_newly_attached = true;
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+  //attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+}
+
+void detachEncoderInterrupts(void){
+  detachInterrupt(digitalPinToInterrupt(encoderPinA));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB));
+  //detachInterrupt(digitalPinToInterrupt(indexPin));
 }
 
 // Interrupt on A changing state
@@ -527,6 +600,31 @@ void doEncoderA() {
   // and adjust counter + if A leads B
   encoderPosLast = encoderPos;
   encoderPos += (A_set != B_set) ? +1 : -1;
+
+//ENCODER SPEED NEEDS TO BE CALCULATED FOR FRICTION COMPENSATION
+//DIRECTION OF ENCODER IS NOT IMPORTANT SO IS NOT INCLUDED
+  if(A_set){
+      current_time_encoder = micros();
+    if(!encoder_newly_attached){
+      if(!timer_interrupt){
+        if(!index_interrupt){
+          if(current_time_encoder > previous_time_encoder){
+            encoderAngVel = 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
+//            previous_time_encoder = current_time_encoder;
+            }
+        } else{
+          index_interrupt = false;
+        }
+         
+      } else{
+        timer_interrupt = false;
+      }
+    } else{
+      encoder_newly_attached = false;
+    }
+  previous_time_encoder = current_time_encoder;
+  }
+
 
   encoderWrap();
 
@@ -547,6 +645,7 @@ void doEncoderB() {
 //ENCODER DIRECTION IS ONLY NECESSARY FOR CALCULATING ANG VEL, SO ONLY NEEDS TO BE CORRECT WHEN
 //INDEX PIN TRIGGERS. Error in direction on wrap is OK....?
 void doIndexPin(void){
+  index_interrupt = true;
     //get direction of rotation through index position
     if(encoderPos - encoderPosLast >= 0){
       encoder_direction_index = -1;
@@ -557,9 +656,13 @@ void doIndexPin(void){
     led_index_on = !led_index_on;
     setIndexLEDs(led_index_on);
 
-    if(SmState == STATE_INITIALISE){
-      encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
-    }
+//    if(SmState == STATE_INITIALISE){
+//      initial_index_hit = true;
+//      encoderPos = 0;   //whilst initialising, when index pin hit set the encoder position to 0.
+//      
+//    }
+
+      
   
 }
 
@@ -571,15 +674,18 @@ void encoderWrap(void){
       }
 }
 
-//DISCRETE TIME VERSION
+////DISCRETE TIME VERSION with filter
 void calculatePositionPID(void){
     previous_previous_error = previous_error;
     previous_error = error;
+
+    previous_previous_error_position_filter = previous_error_position_filter;
+    previous_error_position_filter = error_position_filter;
     
   float error_pos = encoderPos - set_position;
   int dir = error_pos / abs(error_pos);    //should be +1 or -1.
   
-  float error_pos_inverse = 2*position_max - abs(error_pos);
+  float error_pos_inverse = 2*position_limit - abs(error_pos);
 
   if(abs(error_pos) <= abs(error_pos_inverse)){
     error = error_pos;
@@ -587,18 +693,65 @@ void calculatePositionPID(void){
     error = -1*dir*error_pos_inverse;
   }
   //convert error to an angular error in deg
-  error = error*180/position_max;
+  error = error*180.0/position_limit;
+
+  error_position_filter = lowpass_filter(error, previous_error_position_filter);
   
   
   float delta_t = pid_interval/1000.0;
   float Ti = Kp/Ki;
   float Td = Kd/Kp;
-  
- float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error - 2*previous_error + previous_previous_error));
 
+  float delta_p = Kp*(error - previous_error);
+  proportional_term += delta_p;
+
+  float delta_i = Kp*delta_t*error/Ti;
+  integral_term += delta_i;
+
+  float delta_d =  Kp*(Td/delta_t)*(error_position_filter - 2*previous_error_position_filter + previous_previous_error_position_filter);
+  derivative_term += delta_d; 
+  
+ //float new_signal = Kp*(error - previous_error + delta_t*error/Ti +(Td/delta_t)*(error_position_filter - 2*previous_error_position_filter + previous_previous_error_position_filter));
+  
+  float new_signal = delta_p + delta_i + delta_d;
+  
   PID_signal += new_signal;
     
 
+}
+
+float lowpass_filter(float input, float previous_output){
+  float a = 0.1;
+  return (1-a)*previous_output + a*input;
+}
+
+float friction_compensation_static(float drive_signal, float encoderAngVel, float error){
+ //static
+ if(abs(encoderAngVel) < 5 && abs(drive_signal) > 0){
+  if(error > friction_comp_window){
+    return friction_comp_static_CCW;
+  } else if(error < -friction_comp_window){
+    return -friction_comp_static_CW;
+  } else if(error > 0){
+    return friction_comp_static_CCW * error/friction_comp_window;
+  } else {
+    return -friction_comp_static_CW * error/friction_comp_window;
+  }
+ }
+  
+ 
+}
+
+//dynamic friction, no window
+float friction_compensation_dynamic(float drive_signal, float error){
+  if(drive_signal > 0){
+      return friction_comp_dynamic_CCW;
+ } else if(drive_signal < 0){
+      return -friction_comp_dynamic_CW;
+ } else {
+    return 0.0;
+  }
+ 
 }
 
 void setIndexLEDs(bool value){
