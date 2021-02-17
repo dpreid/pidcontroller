@@ -116,6 +116,7 @@ int awaiting_stop_thisPos = 0;
 int sameCount = 100;   
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 
+bool friction_comp_on = false;
 float friction_comp_static_CW = (1.8/12.0)*255;
 float friction_comp_static_CCW = (1.7/12.0)*255;
 float friction_comp_window = 5.0;
@@ -227,8 +228,11 @@ void Sm_State_PID_Speed(void){
   float friction_comp_static = friction_compensation_static(PID_signal, encoderAngVel, error_speed);
   float friction_comp_dynamic = friction_compensation_dynamic(PID_signal, encoderAngVel, error_speed);
 
-  float drive_signal = PID_signal + friction_comp_static + friction_comp_dynamic;
-   
+  float drive_signal = PID_signal;
+	
+  if (friction_comp_on) {
+	drive_signal += friction_comp_static + friction_comp_dynamic;
+  
     if(drive_signal > 200){
       motor.drive(200);
     } else if(drive_signal < -200){
@@ -236,8 +240,11 @@ void Sm_State_PID_Speed(void){
     } else{
       motor.drive(drive_signal);
     }
+
+  } else {
+	  motor.drive(drive_signal);
+	}	
   
-  //report_encoder();  
   SmState = STATE_PID_SPEED_MODE;
 
   if(millis() >= mode_start_time + shutdown_timer && set_speed != 0){
@@ -248,12 +255,13 @@ void Sm_State_PID_Speed(void){
 //TRANSITION: PID_POSITION -> PID_POSITION
 void Sm_State_PID_Position(void){
 
-//    PID_signal = friction_compensation_min(PID_signal, 10.0);
-    float friction_comp_static = friction_compensation_static(PID_signal, encoderAngVel, error);
+  float friction_comp_static = friction_compensation_static(PID_signal, encoderAngVel, error);
   float friction_comp_dynamic = friction_compensation_dynamic(PID_signal, encoderAngVel, error);
 
-  float drive_signal = PID_signal + friction_comp_static + friction_comp_dynamic;
-    
+  float drive_signal = PID_signal;
+   if (friction_comp_on) {
+	drive_signal += friction_comp_static + friction_comp_dynamic;
+  
     if(drive_signal > 200){
       motor.drive(200);
     } else if(drive_signal < -200){
@@ -261,17 +269,17 @@ void Sm_State_PID_Position(void){
     } else{
       motor.drive(drive_signal);
     }
-  
-  //report_encoder();
+
+  } else {
+	  motor.drive(drive_signal);
+	}	
+
   SmState = STATE_PID_POSITION_MODE;
 
   if(millis() >= mode_start_time + shutdown_timer){
     SmState = STATE_AWAITING_STOP;
-  } else if(encoderWrapCW > 1 | encoderWrapCCW > 1){
-    encoderWrapCW = 0;
-    encoderWrapCCW = 0;
-    SmState = STATE_AWAITING_STOP;
   }
+  // old wrap test was here
 
 }
 
@@ -279,10 +287,8 @@ void Sm_State_PID_Position(void){
 void Sm_State_DC_Motor(void){
   float drive_signal = set_speed*1.275;
 
-
   motor.drive(drive_signal);     //max signal = 127.5 (6V/12V * 255)
-  
-  //report_encoder();
+
   SmState = STATE_DC_MOTOR_MODE;
 
   if(millis() >= mode_start_time + shutdown_timer && set_speed != 0){
