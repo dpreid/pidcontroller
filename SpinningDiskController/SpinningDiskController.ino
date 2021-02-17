@@ -575,6 +575,7 @@ void attachEncoderInterrupts(void){
 //CURRENTLY ALWAYS DOING ENCODER INTERRUPTS IN ORDER TO GET DIRECTION
 //Encoder A is used to calculate angular speed in rpm as well as new position
 void doEncoderA() {
+  encoder_count++;
   A_set = digitalRead(encoderPinA) == HIGH;
   B_set = digitalRead(encoderPinB) == HIGH;
   // and adjust counter + if A leads B
