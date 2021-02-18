@@ -46,8 +46,6 @@ volatile int encoder_direction_index = 1;
 volatile int encoder_positive_count = 0;
 volatile int encoder_negative_count = 0;
 
-volatile int encoder_count = 0; //added TDD 2021-02-17
-
 unsigned long current_time_encoder = 0;
 unsigned long previous_time_encoder = 0;
 unsigned long current_time_index = 0;
@@ -99,7 +97,6 @@ float pid_interval = 20.0;       //ms, for timer interrupt    !!!!!!************
 int report_integer = 1;          //an integer multiple of the pid_interval for reporting data set to 5 for speed modes, 1 for position mode.
 int report_count = 0;
 
-bool encoder_newly_attached = false;
 bool timer_interrupt = false;
 bool index_interrupt = false;
 
@@ -521,10 +518,6 @@ void resetPIDSignal(void){
 void report_encoder(void)
 {
 
-  unsigned long current_time = millis();
- 
-  //detachEncoderInterrupts();
-  /*
   if (encoderPlain){
     Serial.print("position = ");
     Serial.println(encoderPos);
@@ -536,11 +529,8 @@ void report_encoder(void)
     Serial.print(encoderPos);
     Serial.print(",\"enc_ang_vel\":");
     Serial.print(encoderAngVel);
-	Serial.print(",\"enc_count\":");
-	Serial.print(encoder_count);
-	encoder_count = 0; //TDD hack for quick check on consistency of encoder count bearing in mind report timing is variable.
     Serial.print(",\"time\":");
-    Serial.print(current_time); 
+    Serial.print(millis()); 
     Serial.print(",\"p_sig\":");
     Serial.print(proportional_term);
     Serial.print(",\"i_sig\":");
@@ -552,9 +542,7 @@ void report_encoder(void)
 	Serial.print(",\"sv\":");
 	Serial.print(set_speed);	
     Serial.println("}");
-	}*/
-
-  //attachEncoderInterrupts();
+	}
 }
 
 void detachEncoderInterrupts(void){
@@ -593,31 +581,15 @@ void doEncoderA() {
 	if (dt > 0 ) { //not overflow
 	  encoderAngVel =  60e6 / (current_time_encoder - previous_time_encoder); //rpm 
 	  }
+	/*
 	Serial.print("{\"enc_ang_vel\":");
 	Serial.print(encoderAngVel);
 	Serial.print(",\"time\":");
     Serial.print(millis()); 
 	Serial.println("}");  
+	*/
 	previous_time_encoder = current_time_encoder; 
   }
-  /*
-  unsigned long int dt = current_time_encoder - previous_time_encoder;
-
-  if (dt > 60 ) { //not overflow (>0), 60 microseconds * 500 PPR = 33rps = 2000 rpm
-	unsigned long int dta_unscaled = dta >> 8; 
-	dta += dt - dta_unscaled;
-	encoderAngVel = (encoder_direction * 120000.0) / dta_unscaled;
-	Serial.print("{\"av\":");
-	Serial.Print(encoderAngVel)
-	Serial.println("}");
-  } else {
-	Serial.print("{\"dt\":");
-	Serial.print(dt);
-	Serial.println("}");
-  }
-  */
-
-
 }
 
 
