@@ -592,6 +592,10 @@ void doEncoderA() {
 	uint dta_unscaled = dta >> 8; 
 	dta += dt - dta_unscaled;
 	encoderAngVel = encoder_direction * 60000000.0 / ((dta_unscaled) * 500);
+  } else {
+	Serial.print("{\"dt\":");
+	Serial.print(dt);
+	Serial.println("}");
   }
 
   previous_time_encoder = current_time_encoder; 
