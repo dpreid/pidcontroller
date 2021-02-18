@@ -30,6 +30,9 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 unsigned long dta; // moving average, needs right shifting by 3 bits to get correct value
 bool do_report_encoder = false;
 bool do_calculate_position = false;
+volatile float speed_angular_velocity = 0; //for speed mode velocity reporting
+unsigned long speed_current_time_encoder = 0;
+unsigned long speed_previous_time_encoder = 0;
 
 bool debug = false;
 //unsigned long report_interval = 10;   //ms
@@ -48,6 +51,7 @@ volatile int encoder_negative_count = 0;
 
 unsigned long current_time_encoder = 0;
 unsigned long previous_time_encoder = 0;
+
 unsigned long current_time_index = 0;
 unsigned long previous_time_index = 0;
 
@@ -529,7 +533,7 @@ void report_encoder(void)
     Serial.print("{\"enc\":");
     Serial.print(encoderPos);
     Serial.print(",\"enc_ang_vel\":");
-    Serial.print(encoderAngVel);
+    Serial.print(speed_angular_velocity);
     Serial.print(",\"time\":");
     Serial.print(millis()); 
     Serial.print(",\"p_sig\":");
@@ -560,7 +564,12 @@ void attachEncoderInterrupts(void){
 // Interrupt on encoder A changing state
 // calculate position, direction and speed
 void doEncoderA() {
-  
+  previous_time_encoder = current_time_encoder;
+  current_time_encoder = micros();
+  unsigned long dt = current_time_encoder - previous_time_encoder; 
+  if (dt > 0 ) { //not overflow
+	encoderAngVel = 60e6 / (dt * 500);
+  }
   A_set = digitalRead(encoderPinA) == HIGH;
   B_set = digitalRead(encoderPinB) == HIGH;
   // adjust counter + if A leads B
@@ -576,11 +585,11 @@ void doEncoderA() {
   }
 
   if (encoderPos == 0) { // we can't skip this because increments are by one
-	current_time_encoder = micros();
-	unsigned long dt = current_time_encoder - previous_time_encoder;
+	speed_current_time_encoder = micros();
+	unsigned long speed_dt = speed_current_time_encoder - speed_previous_time_encoder;
 	
-	if (dt > 0 ) { //not overflow
-	  encoderAngVel =  60e6 / (current_time_encoder - previous_time_encoder); //rpm 
+	if (speed_dt > 0 ) { //not overflow
+	  speed_angular_velocity =  60e6 / (speed_dt); //rpm 
 	  }
 	/*
 	Serial.print("{\"enc_ang_vel\":");
@@ -589,7 +598,7 @@ void doEncoderA() {
     Serial.print(millis()); 
 	Serial.println("}");  
 	*/
-	previous_time_encoder = current_time_encoder; 
+	speed_previous_time_encoder = speed_current_time_encoder; 
   }
 }
 
