@@ -250,15 +250,15 @@ void Sm_State_PID_Speed(void){
 	drive_signal += friction_comp_static + friction_comp_dynamic;
   
     if(drive_signal > 200){
-      //motor.drive(200);
+      motor.drive(200);
     } else if(drive_signal < -200){
-      //motor.drive(-200);
+      motor.drive(-200);
     } else{
-      //motor.drive(drive_signal);
+      motor.drive(drive_signal);
     }
 
   } else {
-	  //motor.drive(drive_signal);
+	  motor.drive(drive_signal);
 	}	
   
   SmState = STATE_PID_SPEED_MODE;
@@ -279,15 +279,15 @@ void Sm_State_PID_Position(void){
 	drive_signal += friction_comp_static + friction_comp_dynamic;
   
     if(drive_signal > 200){
-      //motor.drive(200);
+      motor.drive(200);
     } else if(drive_signal < -200){
-      //motor.drive(-200);
+      motor.drive(-200);
     } else{
-      //motor.drive(drive_signal);
+      motor.drive(drive_signal);
     }
 
   } else {
-	  //motor.drive(drive_signal);
+	  motor.drive(drive_signal);
 	}	
 
   SmState = STATE_PID_POSITION_MODE;

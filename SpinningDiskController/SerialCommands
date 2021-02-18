@@ -28,15 +28,15 @@
 {"set":"speed","to":2500}
 {"set":"speed","to":2700}
 {"set":"speed","to":2900}
-
+{"set":"speed","to":-30}
 {"set":"mode","to":"zero"}
 {"set":"mode","to":"speedPid"}	//set_speed parameter in rpm
 {"set":"mode","to":"speedRaw"}	//set_speed parameter 0 - 255
 {"set":"mode","to":"stop"}
 
 {"set":"mode","to":"speedRaw"}
-
-
+{"set":"speed","to":10}
+{"set":"speed","to":100}
 {"set":"parameters","kp":1.0, "ki":0, "kd":0, "dt":20}	//dt in ms
 {"set":"timer","to":10}					//timer in seconds
 
