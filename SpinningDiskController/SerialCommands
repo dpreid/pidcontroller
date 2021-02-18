@@ -9,7 +9,12 @@
 {"set":"speed","to":900}
 {"set":"speed","to":1000}
 {"set":"speed","to":1000}
-
+{"set":"speed","to":300}
+{"set":"speed","to":340}
+{"set":"speed","to":350}
+{"set":"speed","to":360}
+{"set":"speed","to":400}
+{"set":"speed","to":450}
 {"set":"speed","to":500}
 {"set":"speed","to":700}
 {"set":"speed","to":900}

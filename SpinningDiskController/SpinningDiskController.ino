@@ -10,8 +10,8 @@
  * Timer interrupt functions from https://github.com/nebs/arduino-zero-timer-demo/
  */
 #include <Adafruit_NeoPixel.h>
-#include <MotorControllerPmodHB3.h>
-#include <SAMD21turboPWM.h>
+#include <MotorControllerPmodHB3SAMD21.h>
+//#include <SAMD21turboPWM.h>
 #include "ArduinoJson-v6.9.1.h"
 
 //NeoPixel LED setup
@@ -23,9 +23,9 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define PWMA 6
 
 
-TurboPWM servo;
-const int servoMinTime = 0;  // Microseconds was 600
-const int servoMaxTime = 3000; // Microseconds was 2400
+//TurboPWM servo;
+//const int servoMinTime = 0;  // 0 uSec is 0% at 50Hz (obvs!); was 600
+//const int servoMaxTime = 20000; // 20,000 usec is 100% at 50Hz; was 2400
 
 int loop_count = 0;
 
@@ -105,9 +105,7 @@ const int offset = 1;
 
 bool led_index_on = false;
 
-//MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
-
-
+MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset);
 
 float position_limit = 250.0;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 float zero_error = 10;
@@ -216,8 +214,8 @@ void Sm_State_Stopped(void){
 
 void Sm_State_Awaiting_Stop(void){
 
-  //motor.brake();
-  setServo(PWMA,0);
+  motor.brake();
+  //setServo(PWMA,0);
 	
     awaiting_stop_lastPos = awaiting_stop_thisPos;
     awaiting_stop_thisPos = encoderPos;
@@ -305,8 +303,8 @@ void Sm_State_PID_Position(void){
 void Sm_State_DC_Motor(void){
   float drive_signal = set_speed*1.275;
 
-  //motor.drive(drive_signal);     //max signal = 127.5 (6V/12V * 255)
-  setServo(PWMA, set_speed);
+  motor.drive(drive_signal);     //max signal = 127.5 (6V/12V * 255)
+  //setServo(PWMA, set_speed);
  
   SmState = STATE_DC_MOTOR_MODE;
 
@@ -354,8 +352,8 @@ void setup() {
   pinMode(indexPin, INPUT);
 
   //if not using motorHB3
-  pinMode(AIN1, OUTPUT);
-  pinMode(PWMA, OUTPUT);
+  //pinMode(AIN1, OUTPUT);
+  //pinMode(PWMA, OUTPUT);
 
   pixels.begin(); // INITIALIZE NeoPixel
   
@@ -373,10 +371,10 @@ void setup() {
   Serial.setTimeout(50);
   Serial.begin(57600);
   
-  servo.setClockDivider(1, false);  // Input clock is divided by 1 and 48MHz is sent to Generic Clock, Turbo is off
-  servo.timer(0, 1, 960000, true); //timer0 for pin6 https://github.com/ocrdu/Arduino_SAMD21_turbo_PWM
+  //servo.setClockDivider(1, false);  // Input clock is divided by 1 and 48MHz is sent to Generic Clock, Turbo is off
+  //servo.timer(0, 1, 960000, true); //timer0 for pin6 https://github.com/ocrdu/Arduino_SAMD21_turbo_PWM
   
-  //startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
+  startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
    while (! Serial);
 
@@ -390,11 +388,11 @@ void loop() {
 	do_report_encoder = false;
   }
 
-  loop_count ++;
+  /*loop_count ++;
   if (loop_count > 1000 ){
 	do_report_encoder = true;
 	loop_count =0 ;
-  }
+	}*/
   
   if (do_calculate_position){
 	if(SmState == STATE_PID_SPEED_MODE){
@@ -405,16 +403,6 @@ void loop() {
 	do_calculate_position = false;
   }
   Sm_Run();  
-}
-
-void setServo(const int pin, int microSeconds) {
-  if (microSeconds < servoMinTime) {
-    microSeconds = servoMinTime;
-  }
-  if (microSeconds > servoMaxTime) {
-    microSeconds = servoMaxTime;
-  }
-  servo.analogWrite(pin, microSeconds / 20);
 }
 
 StateType readSerialJSON(StateType SmState){
