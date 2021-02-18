@@ -524,7 +524,7 @@ void report_encoder(void)
   unsigned long current_time = millis();
  
   //detachEncoderInterrupts();
-  
+  /*
   if (encoderPlain){
     Serial.print("position = ");
     Serial.println(encoderPos);
@@ -552,7 +552,7 @@ void report_encoder(void)
 	Serial.print(",\"sv\":");
 	Serial.print(set_speed);	
     Serial.println("}");
-}
+	}*/
 
   //attachEncoderInterrupts();
 }
@@ -592,8 +592,10 @@ void doEncoderA() {
 	if (dt > 0 ) { //not overflow
 	  encoderAngVel =  60 * 10e6 / (current_time_encoder - previous_time_encoder); //rpm 
 	  }
-	Serial.print("{\"av\":");
+	Serial.print("{\"enc_ang_vel\":");
 	Serial.print(encoderAngVel);
+	Serial.print(",\"time\":");
+    Serial.print(millis()); 
 	Serial.println("}");  
 	previous_time_encoder = current_time_encoder; 
   }
