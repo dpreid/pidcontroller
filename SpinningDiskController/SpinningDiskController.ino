@@ -115,7 +115,7 @@ int awaiting_stop_thisPos = 0;
 int sameCount = 100;   
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 
-bool friction_comp_on = false;
+bool friction_comp_on = true;
 float friction_comp_static_CW = (1.8/12.0)*255;
 float friction_comp_static_CCW = (1.7/12.0)*255;
 float friction_comp_window = 5.0;
