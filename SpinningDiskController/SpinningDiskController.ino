@@ -455,9 +455,13 @@ StateType readSerialJSON(StateType SmState){
         }
         
       } else if (strcmp(set, "show")==0){
-
+		Serial.println("----------------------SHOW MODE------------------------");
+		  
 		 const char* new_show = doc["to"];
-
+		Serial.print("--------------------------");
+		Serial.print(new_show);
+		Serial.println("----------------------------");
+		  
 		 if (strcmp(new_show, "long")==0) {
 		   show_mode = SHOW_LONG;
 		 } 
@@ -476,6 +480,10 @@ StateType readSerialJSON(StateType SmState){
 		 else if (strcmp(new_show, "none")==0) {
 		   show_mode = SHOW_NONE;
 		 }
+
+		Serial.print("-------------------------- ");
+		Serial.print(show_mode);
+		Serial.println(" ----------------------------");
 		 
 	  } else {
         
