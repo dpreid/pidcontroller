@@ -533,7 +533,7 @@ void report_encoder(void)
     Serial.print("{\"enc\":");
     Serial.print(encoderPos);
     Serial.print(",\"enc_ang_vel\":");
-    Serial.print(speed_angular_velocity);
+    Serial.print(encoderAngVel);
     Serial.print(",\"time\":");
     Serial.print(millis()); 
     Serial.print(",\"p_sig\":");
