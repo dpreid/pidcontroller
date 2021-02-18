@@ -27,12 +27,20 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define encoderPinB 2
 #define indexPin 11
 
+#define SHOW_NONE 0
+#define SHOW_PLAIN 1
+#define SHOW_SHORT 2
+#define SHOW_SHORT_SPEED 3
+#define SHOW_SHORT_POS 4
+#define SHOW_LONG 5
+
 unsigned long dta; // moving average, needs right shifting by 3 bits to get correct value
 bool do_report_encoder = false;
 bool do_calculate_position = false;
 volatile float speed_angular_velocity = 0; //for speed mode velocity reporting
 unsigned long speed_current_time_encoder = 0;
 unsigned long speed_previous_time_encoder = 0;
+int show_mode = SHOW_LONG;
 
 bool debug = false;
 //unsigned long report_interval = 10;   //ms
@@ -446,7 +454,30 @@ StateType readSerialJSON(StateType SmState){
           SmState = STATE_PID_POSITION_MODE;
         }
         
-      } else {
+      } else if (strcmp(set, "show")==0){
+
+		 const char* new_show = doc["to"];
+
+		 if (strcmp(new_show, "long")==0) {
+		   show_mode = SHOW_LONG;
+		 } 
+		 else if (strcmp(new_show, "short")==0) {
+		   show_mode = SHOW_SHORT;
+		 } 
+		 else if (strcmp(new_show, "shortSpeed")==0) {
+		   show_mode = SHOW_SHORT_SPEED;
+		 } 
+		 else if (strcmp(new_show, "shortPos")==0) {
+		   show_mode = SHOW_SHORT_POS;
+		 }
+		 else if (strcmp(new_show, "plain")==0) {
+		   show_mode = SHOW_PLAIN;
+		 }
+		 else if (strcmp(new_show, "none")==0) {
+		   show_mode = SHOW_NONE;
+		 }
+		 
+	  } else {
         
         if(strcmp(new_mode, "stop") == 0){
           
@@ -523,13 +554,13 @@ void resetPIDSignal(void){
 void report_encoder(void)
 {
 
-  if (encoderPlain){
+  if (show_mode == SHOW_PLAIN){
     Serial.print("position = ");
     Serial.println(encoderPos*4); //TDD 2021-02-18 mimic that we still have 2000ppr (we only have 500ppr now)
     Serial.print("ang vel = ");
     Serial.println(encoderAngVel);
   }
-  else{
+  else if (show_mode == SHOW_LONG) {
     Serial.print("{\"enc\":");
     Serial.print(encoderPos);
     Serial.print(",\"enc_ang_vel\":");
@@ -547,6 +578,33 @@ void report_encoder(void)
 	Serial.print(",\"sv\":");
 	Serial.print(set_speed);	
     Serial.println("}");
+	
+  } else if (show_mode == SHOW_SHORT) {
+	Serial.print(millis());
+	Serial.print(":");
+	Serial.print(set_position);
+	Serial.print(":");
+	Serial.print(encoderPos);
+	Serial.print(":");
+	Serial.print(set_speed);
+	Serial.print(":");
+	Serial.println(encoderAngVel);
+	
+  } else if (show_mode == SHOW_SHORT_POS) {
+	Serial.print(millis());
+	Serial.print(":");
+	Serial.print(set_position);
+	Serial.print(":");
+	Serial.println(encoderPos);
+	
+  } else if (show_mode == SHOW_SHORT_SPEED) {
+	Serial.print(millis());
+	Serial.print(":");
+	Serial.print(set_position);
+	Serial.print(":");
+	Serial.println(encoderPos);
+  }  else if (show_mode == SHOW_NONE) {
+	  // do nothing
 	}
 }
 
