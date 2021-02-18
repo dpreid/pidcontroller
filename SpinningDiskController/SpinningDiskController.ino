@@ -14,6 +14,7 @@
 
 #include "ArduinoJson-v6.9.1.h"
 
+
 //NeoPixel LED setup
 #define NEOPIXEL_PIN 14
 #define NUMPIXELS 8
@@ -26,7 +27,9 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define encoderPinB 2
 #define indexPin 11
 
+uint dta; // moving average, needs right shifting by 3 bits to get correct value
 bool do_report_encoder = false;
+bool do_calculate_position = false;
 
 bool debug = false;
 //unsigned long report_interval = 10;   //ms
@@ -108,9 +111,6 @@ float timer_interrupt_freq = 1000.0/pid_interval;
 float mode_start_time = 0;        //ms
 float shutdown_timer = 120000;     //ms was 30sec
 float max_timer = 120000;          //ms was 60sec
-
-int encoderWrapCW = 0;
-int encoderWrapCCW = 0;
 
 bool moving = true;
 int awaiting_stop_lastPos = 0;
@@ -194,15 +194,13 @@ void Sm_State_Stopped(void){
   set_speed = 0;
   encoderAngVel = 0;
 
-  //report_encoder();
   SmState = STATE_STOPPED;
 }
 
 void Sm_State_Awaiting_Stop(void){
-  motor.brake();
+
+    motor.brake();
   
-//  while (moving)
-//  {
     awaiting_stop_lastPos = awaiting_stop_thisPos;
     awaiting_stop_thisPos = encoderPos;
     if (awaiting_stop_thisPos == awaiting_stop_lastPos){
@@ -220,7 +218,7 @@ void Sm_State_Awaiting_Stop(void){
     } else{
       SmState = STATE_AWAITING_STOP;
     }
-//}
+
 
  
 }
@@ -318,12 +316,8 @@ void Sm_Run(void)
 //This function is run on a timer interrupt defined by pid_interval/timer_interrupt_freq.
 void TimerInterrupt(void){
   timer_interrupt = true;
-  
-  if(SmState == STATE_PID_SPEED_MODE){
-    calculateSpeedPID();
-  } else if(SmState == STATE_PID_POSITION_MODE){
-    calculatePositionPID();
-  }
+
+  do_calculate_position = true;
 
   report_count++;
   if(report_count >= report_integer){
@@ -369,6 +363,14 @@ void loop() {
 	report_encoder();
 	do_report_encoder = false;
   }
+  if (do_calculate_position){
+	if(SmState == STATE_PID_SPEED_MODE){
+	  calculateSpeedPID();
+	} else if(SmState == STATE_PID_POSITION_MODE){
+	  calculatePositionPID();
+	}
+	do_calculate_position = false;
+  }
   Sm_Run();  
 }
 
@@ -407,8 +409,6 @@ StateType readSerialJSON(StateType SmState){
     }  
     else if(strcmp(set, "position")==0){
       if(SmState == STATE_PID_POSITION_MODE){
-        encoderWrapCW = 0;
-        encoderWrapCCW = 0;
         float new_position = doc["to"];
         if(new_position >= -position_limit && new_position <= position_limit){
           resetPIDSignal();
@@ -441,8 +441,6 @@ StateType readSerialJSON(StateType SmState){
         else if(strcmp(new_mode, "positionPid") == 0){
           report_integer = 1;
           resetPIDSignal();
-          encoderWrapCW = 0;
-          encoderWrapCCW = 0;
           SmState = STATE_PID_POSITION_MODE;
         }
         
@@ -560,85 +558,38 @@ void report_encoder(void)
 
 void detachEncoderInterrupts(void){
   detachInterrupt(digitalPinToInterrupt(encoderPinA));
-  detachInterrupt(digitalPinToInterrupt(encoderPinB));
-  detachInterrupt(digitalPinToInterrupt(indexPin));
+  //detachInterrupt(digitalPinToInterrupt(indexPin));
 }
 
 void attachEncoderInterrupts(void){
-  encoder_newly_attached = true;
-  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, CHANGE);
-  //attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderB, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderA, RISING);
+  //attachInterrupt(digitalPinToInterrupt(indexPin), doIndexPin, RISING);
+  previous_time_encoder = micros();
 }
 
-// Interrupt on A changing state
-//CURRENTLY ALWAYS DOING ENCODER INTERRUPTS IN ORDER TO GET DIRECTION
-//Encoder A is used to calculate angular speed in rpm as well as new position
+// Interrupt on encoder A changing state
+// calculate position, direction and speed
 void doEncoderA() {
-  encoder_count++;
+  
+  current_time_encoder = micros(); // get this as close to actual time as possible
   A_set = digitalRead(encoderPinA) == HIGH;
   B_set = digitalRead(encoderPinB) == HIGH;
-  // and adjust counter + if A leads B
-  encoderPosLast = encoderPos;
-  encoderPos += (A_set != B_set) ? +1 : -1;
+  // adjust counter + if A leads B
+  encoder_direction = (A_set != B_set) ? +1 : -1;
+  encoderPos += encoder_direction;
 
+  int dt = current_time_encoder - previous_time_encoder;
 
-  if(encoderPos - encoderPosLast > 0){
-    encoder_positive_count++;
-    encoder_negative_count = 0;
-    if(encoder_positive_count >= 10){
-      encoder_direction = -1;
-      encoder_positive_count = 0;
-    }
-      
-    } else if(encoderPos - encoderPosLast < 0){
-      encoder_negative_count++;
-      encoder_positive_count = 0;
-      if(encoder_negative_count >= 10){
-        encoder_direction = 1;
-        encoder_negative_count = 0;
-      }
-      
-    }
-
-    if(A_set){
-      current_time_encoder = micros();
-    if(!encoder_newly_attached){
-      if(!timer_interrupt){
-        if(!index_interrupt){
-          if(current_time_encoder > previous_time_encoder){
-            encoderAngVel = encoder_direction * 60000000.0/((current_time_encoder - previous_time_encoder)*500);    //rpm
-//            previous_time_encoder = current_time_encoder;
-            }
-        } else{
-          index_interrupt = false;
-        }
-         
-      } else{
-        timer_interrupt = false;
-      }
-    } else{
-      encoder_newly_attached = false;
-    }
-  previous_time_encoder = current_time_encoder;
+  if (dt > 0 ) { //not overflow
+	uint dta_unscaled = dta >> 3; 
+	dta += dt - dta_unscaled;
+	encoderAngVel = 60000000.0 / ((dta_unscaled) * 500);
   }
-  
 
-  encoderWrap();
-
+  previous_time_encoder = current_time_encoder; 
 
 }
 
-// Interrupt on B changing state
-void doEncoderB() {
- 
-  B_set = digitalRead(encoderPinB) == HIGH;
-  // and adjust counter + if B follows A
-  encoderPosLast = encoderPos;
-  encoderPos += (A_set == B_set) ? +1 : -1;
-  encoderWrap();
-
-}
 
 //ENCODER DIRECTION IS ONLY NECESSARY FOR CALCULATING ANG VEL, SO ONLY NEEDS TO BE CORRECT WHEN
 //INDEX PIN TRIGGERS. Error in direction on wrap is OK....?
@@ -674,17 +625,6 @@ void doIndexPin(void){
   
 }
 
-void encoderWrap(void){
-  if (encoderPos >= position_limit) {
-    encoderWrapCW++;
-    encoderWrapCCW = 0;
-    encoderPos -= 2*position_limit;
-    } else if (encoderPos <= -position_limit) {
-      encoderWrapCCW++;
-      encoderWrapCW = 0;
-      encoderPos += 2*position_limit;
-      }
-}
 
 //DISCRETE TIME VERSION, with filter
 void calculateSpeedPID(void){
