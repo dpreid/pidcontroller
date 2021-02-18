@@ -454,37 +454,6 @@ StateType readSerialJSON(StateType SmState){
           SmState = STATE_PID_POSITION_MODE;
         }
         
-      } else if (strcmp(set, "show")==0){
-		Serial.println("----------------------SHOW MODE------------------------");
-		  
-		 const char* new_show = doc["to"];
-		Serial.print("--------------------------");
-		Serial.print(new_show);
-		Serial.println("----------------------------");
-		  
-		 if (strcmp(new_show, "long")==0) {
-		   show_mode = SHOW_LONG;
-		 } 
-		 else if (strcmp(new_show, "short")==0) {
-		   show_mode = SHOW_SHORT;
-		 } 
-		 else if (strcmp(new_show, "shortSpeed")==0) {
-		   show_mode = SHOW_SHORT_SPEED;
-		 } 
-		 else if (strcmp(new_show, "shortPos")==0) {
-		   show_mode = SHOW_SHORT_POS;
-		 }
-		 else if (strcmp(new_show, "plain")==0) {
-		   show_mode = SHOW_PLAIN;
-		 }
-		 else if (strcmp(new_show, "none")==0) {
-		   show_mode = SHOW_NONE;
-		 }
-
-		Serial.print("-------------------------- ");
-		Serial.print(show_mode);
-		Serial.println(" ----------------------------");
-		 
 	  } else {
         
         if(strcmp(new_mode, "stop") == 0){
@@ -515,8 +484,38 @@ StateType readSerialJSON(StateType SmState){
         float timer_interrupt_freq = 1000/pid_interval;  
         setTimerFrequency(timer_interrupt_freq);        
       }
-    } 
+    }
+	else if (strcmp(set, "show")==0){
+		Serial.println("----------------------SHOW MODE------------------------");
+		  
+		 const char* new_show = doc["to"];
+		Serial.print("--------------------------");
+		Serial.print(new_show);
+		Serial.println("----------------------------");
+		  
+		 if (strcmp(new_show, "long")==0) {
+		   show_mode = SHOW_LONG;
+		 } 
+		 else if (strcmp(new_show, "short")==0) {
+		   show_mode = SHOW_SHORT;
+		 } 
+		 else if (strcmp(new_show, "shortSpeed")==0) {
+		   show_mode = SHOW_SHORT_SPEED;
+		 } 
+		 else if (strcmp(new_show, "shortPos")==0) {
+		   show_mode = SHOW_SHORT_POS;
+		 }
+		 else if (strcmp(new_show, "plain")==0) {
+		   show_mode = SHOW_PLAIN;
+		 }
+		 else if (strcmp(new_show, "none")==0) {
+		   show_mode = SHOW_NONE;
+		 }
 
+		Serial.print("-------------------------- ");
+		Serial.print(show_mode);
+		Serial.println(" ----------------------------");
+    }
     else if(strcmp(set, "timer") == 0){
       float new_timer = doc["to"];
       new_timer *= 1000.0;
