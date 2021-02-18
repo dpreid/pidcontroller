@@ -27,7 +27,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define encoderPinB 2
 #define indexPin 11
 
-unsigned long int dta; // moving average, needs right shifting by 3 bits to get correct value
+unsigned long dta; // moving average, needs right shifting by 3 bits to get correct value
 bool do_report_encoder = false;
 bool do_calculate_position = false;
 
@@ -520,6 +520,7 @@ void resetPIDSignal(void){
 //NEW++++++++++++++++++++ RUNS ON TIMER INTERRUPT
 void report_encoder(void)
 {
+
   unsigned long current_time = millis();
  
   //detachEncoderInterrupts();
@@ -571,7 +572,6 @@ void attachEncoderInterrupts(void){
 // calculate position, direction and speed
 void doEncoderA() {
   
-  current_time_encoder = micros(); // get this as close to actual time as possible
   A_set = digitalRead(encoderPinA) == HIGH;
   B_set = digitalRead(encoderPinB) == HIGH;
   // adjust counter + if A leads B
@@ -586,19 +586,34 @@ void doEncoderA() {
 	encoderPos = 249;
   }
 
+  if (encoderPos == 0) { // we can't skip this because increments are by one
+	current_time_encoder = micros();
+	unsigned long dt = current_time_encoder - previous_time_encoder;
+	if (dt > 0 ) { //not overflow
+	  encoderAngVel =  60 * 10e6 / (current_time_encoder - previous_time_encoder); //rpm 
+	  }
+	Serial.print("{\"av\":");
+	Serial.print(encoderAngVel);
+	Serial.println("}");  
+	previous_time_encoder = current_time_encoder; 
+  }
+  /*
   unsigned long int dt = current_time_encoder - previous_time_encoder;
 
   if (dt > 60 ) { //not overflow (>0), 60 microseconds * 500 PPR = 33rps = 2000 rpm
 	unsigned long int dta_unscaled = dta >> 8; 
 	dta += dt - dta_unscaled;
-	encoderAngVel = encoder_direction * 60000000.0 / ((dta_unscaled) * 500);
+	encoderAngVel = (encoder_direction * 120000.0) / dta_unscaled;
+	Serial.print("{\"av\":");
+	Serial.Print(encoderAngVel)
+	Serial.println("}");
   } else {
 	Serial.print("{\"dt\":");
 	Serial.print(dt);
 	Serial.println("}");
   }
+  */
 
-  previous_time_encoder = current_time_encoder; 
 
 }
 
