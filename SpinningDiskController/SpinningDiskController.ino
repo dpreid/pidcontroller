@@ -578,6 +578,14 @@ void doEncoderA() {
   encoder_direction = (A_set != B_set) ? +1 : -1;
   encoderPos += encoder_direction;
 
+  if (encoderPos > 499) {
+	encoderPos = -500;
+  }
+
+  if (encoderPos < -500){
+	encoderPos = 499;
+  }
+
   int dt = current_time_encoder - previous_time_encoder;
 
   if (dt > 0 ) { //not overflow
