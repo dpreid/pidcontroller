@@ -570,7 +570,7 @@ void doEncoderA() {
   A_set = digitalRead(encoderPinA) == HIGH;
   B_set = digitalRead(encoderPinB) == HIGH;
   // adjust counter + if A leads B; swap?
-  encoder_direction = (A_set != B_set) ? +1 : -1;
+  encoder_direction = -1 * ((A_set != B_set) ? +1 : -1);
   encoderPos += encoder_direction;
 
   if (encoderPos > 249) {
