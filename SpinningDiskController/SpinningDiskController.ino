@@ -39,6 +39,7 @@ int loop_count = 0;
 #define SHOW_SHORT_SPEED 3
 #define SHOW_SHORT_POS 4
 #define SHOW_LONG 5
+#define SHOW_FC 6
 
 unsigned long dta; // moving average, needs right shifting by 3 bits to get correct value
 bool do_report_encoder = false;
@@ -51,7 +52,6 @@ volatile int show_mode = SHOW_LONG;
 bool debug = false;
 //unsigned long report_interval = 10;   //ms
 //unsigned long previous_report_time = 0;
-bool encoderPlain = false;
 
 //for both PID modes and error calculations
 volatile int encoderPos = 0;
@@ -105,7 +105,7 @@ const int offset = 1;
 
 bool led_index_on = false;
 
-MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset);
+MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset, 480000); //480000 for 100Hz PWM
 
 float position_limit = 250.0;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 float zero_error = 10;
@@ -134,11 +134,11 @@ int sameCount = 100;
 int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
 
 bool friction_comp_on = true;
-float friction_comp_static_CW = (2.5/12.0)*255; //was 1.8
-float friction_comp_static_CCW = (2.4/12.0)*255;  //was 1.7
+float friction_comp_static_CW = (1.8/12.0)*255; //was 1.8
+float friction_comp_static_CCW = (1.7/12.0)*255;  //was 1.7
 float friction_comp_window = 5.0;
-float friction_comp_dynamic_CW = (1.5/12.0)*255; //was 1.0
-float friction_comp_dynamic_CCW = (1.5/12.0)*255; //was 0.9
+float friction_comp_dynamic_CW = (1.0/12.0)*255; //was 1.0
+float friction_comp_dynamic_CCW = (0.9/12.0)*255; //was 0.9
 
 //lowpass filter
 volatile float error_position_filter = 0.0;
@@ -440,8 +440,7 @@ StateType readSerialJSON(StateType SmState){
     else if(strcmp(set, "position")==0){
       if(SmState == STATE_PID_POSITION_MODE){
         float new_position = doc["to"];
-		new_position /= 4; //TDD 2021-02-18 reduced from 2000 ppr to 500
-        if(new_position >= -position_limit && new_position <= position_limit){
+	    if(new_position >= -position_limit && new_position <= position_limit){
           resetPIDSignal();
           set_position = new_position;
           
@@ -484,7 +483,7 @@ StateType readSerialJSON(StateType SmState){
         } 
       }
       
-    } else if(strcmp(set, "parameters")==0){
+    } else if(strcmp(set, "parameters")==0 || strcmp(set, "p")==0 ){
 
       resetPIDSignal();
 
@@ -505,6 +504,22 @@ StateType readSerialJSON(StateType SmState){
         float timer_interrupt_freq = 1000/pid_interval;  
         setTimerFrequency(timer_interrupt_freq);        
       }
+
+	  if (!doc["fcs_cw"].isNull()){
+		friction_comp_static_CW = doc["fcs_cw"];
+	  }
+	  if (!doc["fcs_ccw"].isNull()){
+		friction_comp_static_CCW = doc["fcs_ccw"];
+	  }
+	  if (!doc["fcd_cw"].isNull()){
+		friction_comp_dynamic_CW = doc["fcd_cw"];
+	  }
+	  if (!doc["fcd_ccw"].isNull()){
+		friction_comp_dynamic_CCW = doc["fcd_ccw"];
+	  }
+	  if (!doc["fcw"].isNull()){
+		friction_comp_window = doc["fcw"];
+	  }	  
     }
 	else if (strcmp(set, "show")==0){
 		  
@@ -528,7 +543,9 @@ StateType readSerialJSON(StateType SmState){
 		 else if (strcmp(new_show, "none")==0) {
 		   show_mode = SHOW_NONE;
 		 }
-
+		 else if (strcmp(new_show, "fc")==0) {
+		   show_mode = SHOW_FC;
+		 }
     }
     else if(strcmp(set, "timer") == 0){
       float new_timer = doc["to"];
@@ -599,7 +616,7 @@ void report_encoder(void)
 	Serial.print(",\"sp\":");
 	Serial.print(set_position);
 	Serial.print(",\"sv\":");
-	Serial.print(set_speed);	
+	Serial.print(set_speed);
     Serial.println("}");
 	
   } else if (show_mode == SHOW_SHORT) {
@@ -626,7 +643,21 @@ void report_encoder(void)
 	Serial.print(set_speed);
 	Serial.print(",");
 	Serial.println(speed_angular_velocity);
-  }  else if (show_mode == SHOW_NONE) {
+  } else if (show_mode == SHOW_FC) {
+	Serial.print(millis());
+	Serial.print(",");
+	Serial.print(friction_comp_static_CW);
+	Serial.print(",");
+	Serial.print(friction_comp_static_CCW);
+	Serial.print(",");
+	Serial.print(friction_comp_dynamic_CW);
+	Serial.print(",");
+	Serial.print(friction_comp_dynamic_CCW);
+	Serial.print(",");
+	Serial.println(friction_comp_window);
+  }
+
+  else if (show_mode == SHOW_NONE) {
 	  // do nothing
 	}
 

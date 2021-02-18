@@ -33,13 +33,33 @@
 {"set":"mode","to":"speedPid"}	//set_speed parameter in rpm
 {"set":"mode","to":"speedRaw"}	//set_speed parameter 0 - 255
 {"set":"mode","to":"stop"}
+{"set":"speed","to":05}
+{"set":"speed","to":10}
+{"set":"speed","to":11}
+{"set":"speed","to":15}
+{"set":"speed","to":16}
+{"set":"speed","to":17}
+{"set":"speed","to":18}
+{"set":"speed","to":19}
+{"set":"speed","to":20}
+{"set":"speed","to":21}
+{"set":"speed","to":22}
+{"set":"speed","to":23}
+{"set":"speed","to":24}
+{"set":"speed","to":25}
+{"set":"speed","to":26}
 
-{"set":"mode","to":"speedRaw"}
 {"set":"speed","to":10}
 {"set":"speed","to":100}
-{"set":"parameters","kp":1.0, "ki":0, "kd":0, "dt":20}	//dt in ms
+{"set":"parameters","kp":0.1, "ki":0, "kd":0, "dt":20}	//dt in ms
+{"set":"parameters","kp":0.5, "ki":0, "kd":0, "dt":20}
 {"set":"timer","to":10}					//timer in seconds
 
+{"set":"mode","to":"positionPid"}
+{"set":"position","to":50}
+{"set":"position","to":60}
+{"set":"position","to":100}
+{"set":"position","to":300}
 
 {"set":"show","to":"none"}
 {"set":"show","to":"long"}
@@ -47,3 +67,23 @@
 {"set":"show","to":"shortPos"}
 {"set":"show","to":"shortSpeed"}
 {"set":"show","to":"plain"}
+{"set":"show","to":"fc"}
+
+{"set":"parameters","fcs_cw":1.0,"fcs_ccw":2.0,"fcd_cw":3.0,"fcd_ccw":4.0,"fcw":6.0}
+
+{"set":"p","fcs_cw":0}
+{"set":"p","fcs_ccw":0}
+{"set":"p","fcd_cw":9.0}
+{"set":"p","fcd_ccw":10.0}
+{"set":"p","fcw":11.0}
+
+{"set":"p","fcs_cw":38}
+{"set":"p","fcs_ccw":36}
+{"set":"p","fcd_cw":0}
+{"set":"p","fcd_ccw":0}
+{"set":"p","fcw":5.0}
+
+
+
+{"set":"p","fcs_cw":7,"fcs_ccw":8,"fcd_cw":9,"fcd_ccw":10,"fcw":11}
+{"set":"p","fcs_cw":38.25,"fcs_ccw":36.13,"fcd_cw":21.25,"fcd_ccw":19.12,"fcw":5}
