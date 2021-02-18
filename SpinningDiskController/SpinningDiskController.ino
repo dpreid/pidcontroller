@@ -27,7 +27,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define encoderPinB 2
 #define indexPin 11
 
-uint dta; // moving average, needs right shifting by 3 bits to get correct value
+unsigned long int dta; // moving average, needs right shifting by 3 bits to get correct value
 bool do_report_encoder = false;
 bool do_calculate_position = false;
 
@@ -586,10 +586,10 @@ void doEncoderA() {
 	encoderPos = 249;
   }
 
-  int dt = current_time_encoder - previous_time_encoder;
+  unsigned long int dt = current_time_encoder - previous_time_encoder;
 
   if (dt > 60 ) { //not overflow (>0), 60 microseconds * 500 PPR = 33rps = 2000 rpm
-	uint dta_unscaled = dta >> 8; 
+	unsigned long int dta_unscaled = dta >> 8; 
 	dta += dt - dta_unscaled;
 	encoderAngVel = encoder_direction * 60000000.0 / ((dta_unscaled) * 500);
   } else {
