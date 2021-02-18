@@ -588,7 +588,7 @@ void doEncoderA() {
 
   int dt = current_time_encoder - previous_time_encoder;
 
-  if (dt > 240 ) { //not overflow (>0), less than 500rpm (240us per pulse)
+  if (dt > 24 ) { //not overflow (>0), less than 500rpm (240us) - mod to check premature reach of limit
 	uint dta_unscaled = dta >> 3; 
 	dta += dt - dta_unscaled;
 	encoderAngVel = 60000000.0 / ((dta_unscaled) * 500);
