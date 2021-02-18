@@ -40,7 +40,7 @@ bool do_calculate_position = false;
 volatile float speed_angular_velocity = 0; //for speed mode velocity reporting
 unsigned long speed_current_time_encoder = 0;
 unsigned long speed_previous_time_encoder = 0;
-int show_mode = SHOW_LONG;
+volatile int show_mode = SHOW_LONG;
 
 bool debug = false;
 //unsigned long report_interval = 10;   //ms

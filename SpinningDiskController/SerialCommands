@@ -8,4 +8,12 @@
 
 
 {"set":"parameters","kp":1.0, "ki":0, "kd":0, "dt":20}	//dt in ms
-{"set":"timer","to":10)					//timer in seconds
+{"set":"timer","to":10}					//timer in seconds
+
+
+{"set":"show","to":"none"}
+{"set":"show","to":"long"}
+{"set":"show","to":"short"}
+{"set":"show","to":"shortPos"}
+{"set":"show","to":"shortSpeed"}
+{"set":"show","to":"plain"}
