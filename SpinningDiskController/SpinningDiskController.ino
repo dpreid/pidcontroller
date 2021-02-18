@@ -566,13 +566,10 @@ void attachEncoderInterrupts(void){
 void doEncoderA() {
   previous_time_encoder = current_time_encoder;
   current_time_encoder = micros();
-  unsigned long dt = current_time_encoder - previous_time_encoder; 
-  if (dt > 0 ) { //not overflow
-	encoderAngVel = 60e6 / (dt * 500);
-  }
+
   A_set = digitalRead(encoderPinA) == HIGH;
   B_set = digitalRead(encoderPinB) == HIGH;
-  // adjust counter + if A leads B
+  // adjust counter + if A leads B; swap?
   encoder_direction = (A_set != B_set) ? +1 : -1;
   encoderPos += encoder_direction;
 
@@ -584,12 +581,18 @@ void doEncoderA() {
 	encoderPos = 249;
   }
 
+  unsigned long dt = current_time_encoder - previous_time_encoder; 
+
+  if (dt > 0 ) { //not overflow
+	encoderAngVel = encoder_direction * 60e6 / (dt * 500);
+  }
+  
   if (encoderPos == 0) { // we can't skip this because increments are by one
 	speed_current_time_encoder = micros();
 	unsigned long speed_dt = speed_current_time_encoder - speed_previous_time_encoder;
 	
 	if (speed_dt > 0 ) { //not overflow
-	  speed_angular_velocity =  60e6 / (speed_dt); //rpm 
+	  speed_angular_velocity =  encoder_direction * 60e6 / (speed_dt); //rpm 
 	  }
 	/*
 	Serial.print("{\"enc_ang_vel\":");
