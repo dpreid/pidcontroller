@@ -89,7 +89,7 @@ bool led_index_on = false;
 
 MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
 
-float position_limit = 1000.0;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
+float position_limit = 250.0;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 float zero_error = 10;
 float max_rpm = 4000;
 
@@ -407,6 +407,7 @@ StateType readSerialJSON(StateType SmState){
     else if(strcmp(set, "position")==0){
       if(SmState == STATE_PID_POSITION_MODE){
         float new_position = doc["to"];
+		new_position /= 4; //TDD 2021-02-18 reduced from 2000 ppr to 500
         if(new_position >= -position_limit && new_position <= position_limit){
           resetPIDSignal();
           set_position = new_position;
@@ -520,7 +521,7 @@ void report_encoder(void)
 
   if (encoderPlain){
     Serial.print("position = ");
-    Serial.println(encoderPos);
+    Serial.println(encoderPos*4); //TDD 2021-02-18 mimic that we still have 2000ppr (we only have 500ppr now)
     Serial.print("ang vel = ");
     Serial.println(encoderAngVel);
   }
