@@ -123,8 +123,8 @@ bool friction_comp_on = true;
 float friction_comp_static_CW = (2.5/12.0)*255; //was 1.8
 float friction_comp_static_CCW = (2.4/12.0)*255;  //was 1.7
 float friction_comp_window = 5.0;
-float friction_comp_dynamic_CW = (1.0/12.0)*255;
-float friction_comp_dynamic_CCW = (0.9/12.0)*255;
+float friction_comp_dynamic_CW = (2.0/12.0)*255; //was 1.0
+float friction_comp_dynamic_CCW = (1.9/12.0)*255; //was 0.9
 
 //lowpass filter
 volatile float error_position_filter = 0.0;
