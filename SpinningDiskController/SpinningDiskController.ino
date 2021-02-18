@@ -589,8 +589,9 @@ void doEncoderA() {
   if (encoderPos == 0) { // we can't skip this because increments are by one
 	current_time_encoder = micros();
 	unsigned long dt = current_time_encoder - previous_time_encoder;
+	
 	if (dt > 0 ) { //not overflow
-	  encoderAngVel =  60 * 10e6 / (current_time_encoder - previous_time_encoder); //rpm 
+	  encoderAngVel =  60e6 / (current_time_encoder - previous_time_encoder); //rpm 
 	  }
 	Serial.print("{\"enc_ang_vel\":");
 	Serial.print(encoderAngVel);
