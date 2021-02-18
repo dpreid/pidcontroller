@@ -8,12 +8,28 @@
 {"set":"speed","to":800}
 {"set":"speed","to":900}
 {"set":"speed","to":1000}
+{"set":"speed","to":1000}
+
+{"set":"speed","to":500}
+{"set":"speed","to":700}
+{"set":"speed","to":900}
+{"set":"speed","to":1100}
+{"set":"speed","to":1300}
+{"set":"speed","to":1500}
+{"set":"speed","to":1700}
+{"set":"speed","to":1900}
+{"set":"speed","to":2100}
+{"set":"speed","to":2300}
+{"set":"speed","to":2500}
+{"set":"speed","to":2700}
+{"set":"speed","to":2900}
 
 {"set":"mode","to":"zero"}
 {"set":"mode","to":"speedPid"}	//set_speed parameter in rpm
 {"set":"mode","to":"speedRaw"}	//set_speed parameter 0 - 255
 {"set":"mode","to":"stop"}
 
+{"set":"mode","to":"speedRaw"}
 
 
 {"set":"parameters","kp":1.0, "ki":0, "kd":0, "dt":20}	//dt in ms

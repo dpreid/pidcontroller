@@ -24,8 +24,8 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 
 TurboPWM servo;
-const int servoMinTime = 600;  // Microseconds
-const int servoMaxTime = 2400; // Microseconds
+const int servoMinTime = 0;  // Microseconds was 600
+const int servoMaxTime = 3000; // Microseconds was 2400
 
 int loop_count = 0;
 
@@ -391,7 +391,7 @@ void loop() {
   }
 
   loop_count ++;
-  if (loop_count > 100 ){
+  if (loop_count > 1000 ){
 	do_report_encoder = true;
 	loop_count =0 ;
   }
@@ -627,17 +627,17 @@ void report_encoder(void)
 	
   } else if (show_mode == SHOW_SHORT_POS) {
 	Serial.print(millis());
-	Serial.print(":");
+	Serial.print(",");
 	Serial.print(set_position);
-	Serial.print(":");
+	Serial.print(",");
 	Serial.println(encoderPos);
 	
   } else if (show_mode == SHOW_SHORT_SPEED) {
 	Serial.print(millis());
-	Serial.print(":");
+	Serial.print(",");
 	Serial.print(set_speed);
-	Serial.print(":");
-	Serial.println(encoderAngVel);
+	Serial.print(",");
+	Serial.println(speed_angular_velocity);
   }  else if (show_mode == SHOW_NONE) {
 	  // do nothing
 	}
