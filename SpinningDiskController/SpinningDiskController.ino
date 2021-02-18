@@ -11,9 +11,8 @@
  */
 #include <Adafruit_NeoPixel.h>
 #include <MotorControllerPmodHB3.h>
-
+#include <SAMD21turboPWM.h>
 #include "ArduinoJson-v6.9.1.h"
-
 
 //NeoPixel LED setup
 #define NEOPIXEL_PIN 14
@@ -22,7 +21,14 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 // Pins on Motor Driver board.
 #define AIN1 5
 #define PWMA 6
- 
+
+
+TurboPWM servo;
+const int servoMinTime = 600;  // Microseconds
+const int servoMaxTime = 2400; // Microseconds
+
+int loop_count = 0;
+
 #define encoderPinA 3     //these pins all have interrupts on them.
 #define encoderPinB 2
 #define indexPin 11
@@ -99,7 +105,9 @@ const int offset = 1;
 
 bool led_index_on = false;
 
-MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
+//MotorHB3 motor = MotorHB3(AIN1, PWMA, offset);
+
+
 
 float position_limit = 250.0;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 float zero_error = 10;
@@ -208,8 +216,9 @@ void Sm_State_Stopped(void){
 
 void Sm_State_Awaiting_Stop(void){
 
-    motor.brake();
-  
+  //motor.brake();
+  setServo(PWMA,0);
+	
     awaiting_stop_lastPos = awaiting_stop_thisPos;
     awaiting_stop_thisPos = encoderPos;
     if (awaiting_stop_thisPos == awaiting_stop_lastPos){
@@ -243,15 +252,15 @@ void Sm_State_PID_Speed(void){
 	drive_signal += friction_comp_static + friction_comp_dynamic;
   
     if(drive_signal > 200){
-      motor.drive(200);
+      //motor.drive(200);
     } else if(drive_signal < -200){
-      motor.drive(-200);
+      //motor.drive(-200);
     } else{
-      motor.drive(drive_signal);
+      //motor.drive(drive_signal);
     }
 
   } else {
-	  motor.drive(drive_signal);
+	  //motor.drive(drive_signal);
 	}	
   
   SmState = STATE_PID_SPEED_MODE;
@@ -272,15 +281,15 @@ void Sm_State_PID_Position(void){
 	drive_signal += friction_comp_static + friction_comp_dynamic;
   
     if(drive_signal > 200){
-      motor.drive(200);
+      //motor.drive(200);
     } else if(drive_signal < -200){
-      motor.drive(-200);
+      //motor.drive(-200);
     } else{
-      motor.drive(drive_signal);
+      //motor.drive(drive_signal);
     }
 
   } else {
-	  motor.drive(drive_signal);
+	  //motor.drive(drive_signal);
 	}	
 
   SmState = STATE_PID_POSITION_MODE;
@@ -296,8 +305,9 @@ void Sm_State_PID_Position(void){
 void Sm_State_DC_Motor(void){
   float drive_signal = set_speed*1.275;
 
-  motor.drive(drive_signal);     //max signal = 127.5 (6V/12V * 255)
-
+  //motor.drive(drive_signal);     //max signal = 127.5 (6V/12V * 255)
+  setServo(PWMA, set_speed);
+ 
   SmState = STATE_DC_MOTOR_MODE;
 
   if(millis() >= mode_start_time + shutdown_timer && set_speed != 0){
@@ -343,6 +353,10 @@ void setup() {
   pinMode(encoderPinB, INPUT);
   pinMode(indexPin, INPUT);
 
+  //if not using motorHB3
+  pinMode(AIN1, OUTPUT);
+  pinMode(PWMA, OUTPUT);
+
   pixels.begin(); // INITIALIZE NeoPixel
   
   attachEncoderInterrupts();
@@ -358,8 +372,11 @@ void setup() {
 
   Serial.setTimeout(50);
   Serial.begin(57600);
-
-  startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
+  
+  servo.setClockDivider(1, false);  // Input clock is divided by 1 and 48MHz is sent to Generic Clock, Turbo is off
+  servo.timer(0, 1, 960000, true); //timer0 for pin6 https://github.com/ocrdu/Arduino_SAMD21_turbo_PWM
+  
+  //startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
    while (! Serial);
 
@@ -372,6 +389,13 @@ void loop() {
 	report_encoder();
 	do_report_encoder = false;
   }
+
+  loop_count ++;
+  if (loop_count > 100 ){
+	do_report_encoder = true;
+	loop_count =0 ;
+  }
+  
   if (do_calculate_position){
 	if(SmState == STATE_PID_SPEED_MODE){
 	  calculateSpeedPID();
@@ -383,6 +407,15 @@ void loop() {
   Sm_Run();  
 }
 
+void setServo(const int pin, int microSeconds) {
+  if (microSeconds < servoMinTime) {
+    microSeconds = servoMinTime;
+  }
+  if (microSeconds > servoMaxTime) {
+    microSeconds = servoMaxTime;
+  }
+  servo.analogWrite(pin, microSeconds / 20);
+}
 
 StateType readSerialJSON(StateType SmState){
   if(Serial.available() > 0){
@@ -406,9 +439,9 @@ StateType readSerialJSON(StateType SmState){
         
       } else if(SmState == STATE_DC_MOTOR_MODE){
         
-        if(new_speed >= -100 && new_speed <= 100){
+        //if(new_speed >= -100 && new_speed <= 100){
           set_speed = new_speed;
-        }
+		  //}
         
       }
       else{
@@ -553,8 +586,8 @@ void resetPIDSignal(void){
 //NEW++++++++++++++++++++ RUNS ON TIMER INTERRUPT
 void report_encoder(void)
 {
-
-  detachEncoderInterrupts();
+  // we lose counts if we detach....
+  //detachEncoderInterrupts();
   
   if (show_mode == SHOW_PLAIN){
     Serial.print("position = ");
@@ -609,7 +642,7 @@ void report_encoder(void)
 	  // do nothing
 	}
 
-  attachEncoderInterrupts();
+  //attachEncoderInterrupts();
 }
 
 void detachEncoderInterrupts(void){
