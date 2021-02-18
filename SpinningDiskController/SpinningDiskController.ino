@@ -578,20 +578,20 @@ void doEncoderA() {
   encoder_direction = (A_set != B_set) ? +1 : -1;
   encoderPos += encoder_direction;
 
-  if (encoderPos > 499) {
-	encoderPos = -500;
+  if (encoderPos > 249) {
+	encoderPos = -250;
   }
 
-  if (encoderPos < -500){
-	encoderPos = 499;
+  if (encoderPos < -250){
+	encoderPos = 249;
   }
 
   int dt = current_time_encoder - previous_time_encoder;
 
-  if (dt > 480 ) { //not overflow (>0), less than 250rpm (480us) - mod to check premature reach of limit
+  if (dt > 60 ) { //not overflow (>0), 60 microseconds * 500 PPR = 33rps = 2000 rpm
 	uint dta_unscaled = dta >> 8; 
 	dta += dt - dta_unscaled;
-	encoderAngVel = 60000000.0 / ((dta_unscaled) * 500);
+	encoderAngVel = encoder_direction * 60000000.0 / ((dta_unscaled) * 500);
   }
 
   previous_time_encoder = current_time_encoder; 
