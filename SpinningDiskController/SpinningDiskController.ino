@@ -486,12 +486,8 @@ StateType readSerialJSON(StateType SmState){
       }
     }
 	else if (strcmp(set, "show")==0){
-		Serial.println("----------------------SHOW MODE------------------------");
 		  
 		 const char* new_show = doc["to"];
-		Serial.print("--------------------------");
-		Serial.print(new_show);
-		Serial.println("----------------------------");
 		  
 		 if (strcmp(new_show, "long")==0) {
 		   show_mode = SHOW_LONG;
@@ -512,9 +508,6 @@ StateType readSerialJSON(StateType SmState){
 		   show_mode = SHOW_NONE;
 		 }
 
-		Serial.print("-------------------------- ");
-		Serial.print(show_mode);
-		Serial.println(" ----------------------------");
     }
     else if(strcmp(set, "timer") == 0){
       float new_timer = doc["to"];
@@ -561,6 +554,8 @@ void resetPIDSignal(void){
 void report_encoder(void)
 {
 
+  detachEncoderInterrupts();
+  
   if (show_mode == SHOW_PLAIN){
     Serial.print("position = ");
     Serial.println(encoderPos*4); //TDD 2021-02-18 mimic that we still have 2000ppr (we only have 500ppr now)
@@ -607,12 +602,14 @@ void report_encoder(void)
   } else if (show_mode == SHOW_SHORT_SPEED) {
 	Serial.print(millis());
 	Serial.print(":");
-	Serial.print(set_position);
+	Serial.print(set_speed);
 	Serial.print(":");
-	Serial.println(encoderPos);
+	Serial.println(encoderAngVel);
   }  else if (show_mode == SHOW_NONE) {
 	  // do nothing
 	}
+
+  attachEncoderInterrupts();
 }
 
 void detachEncoderInterrupts(void){
