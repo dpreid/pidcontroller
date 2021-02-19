@@ -30,8 +30,9 @@ class MotorHB3SAMD21
     //Speed is an integer between -255 and 255.
   void drive(int speed);  
 	
-  void drive(int speed, int duration);  
-
+  void drive(int speed, int duration);
+  
+  void setPrescale(long prescale);
 
   //don't drive motor, but let it spin freely to a stop
   void free();

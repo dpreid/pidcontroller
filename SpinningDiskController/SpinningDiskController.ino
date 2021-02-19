@@ -22,11 +22,6 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define AIN1 5
 #define PWMA 6
 
-
-//TurboPWM servo;
-//const int servoMinTime = 0;  // 0 uSec is 0% at 50Hz (obvs!); was 600
-//const int servoMaxTime = 20000; // 20,000 usec is 100% at 50Hz; was 2400
-
 int loop_count = 0;
 
 #define encoderPinA 3     //these pins all have interrupts on them.
@@ -105,7 +100,7 @@ const int offset = 1;
 
 bool led_index_on = false;
 
-MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset, 480000); //480000 for 100Hz PWM
+MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset, 240000); //240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
 float position_limit = 250.0;    //the number of encoderPos intervals in half a rotation (encoder rotates from -1000 to 1000).
 float zero_error = 10;
@@ -519,7 +514,11 @@ StateType readSerialJSON(StateType SmState){
 	  }
 	  if (!doc["fcw"].isNull()){
 		friction_comp_window = doc["fcw"];
-	  }	  
+	  }
+	  if (!doc["pre"].isNull()){
+		motor.setPrescale(doc["pre"]);
+	  }
+	  
     }
 	else if (strcmp(set, "show")==0){
 		  

@@ -34,6 +34,10 @@ MotorHB3SAMD21::MotorHB3SAMD21(int directionPin, int enablePin, int offset, long
     
 }
 
+void MotorHB3SAMD21::setPrescale(long prescale) {
+  servo.timer(0, 1, prescale, true);
+}
+
 void MotorHB3SAMD21::setMinTime(int time) {
   servoMinTime = time;
 }
