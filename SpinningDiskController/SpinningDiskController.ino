@@ -55,14 +55,21 @@ float shutdownTimerMillis = 180 * secondsToMillis;
 float longestShutdownTimerSeconds = 180;
 
 /****** ENCODER *******/
+#include <Encoder.h>
+
 #define encoderPinA 3     //these pins all have interrupts on them.
 #define encoderPinB 2
 #define indexPin 11
 
+class Plant:
+  
+
+Encoder quad(encoderPinA, encoderPinB);
 const float encoderPPR = 500;
+
 const float positionLimit = 2 * encoderPPR; // using both edges on A & B lines for position
-const float positionMin = positionLimit * -1; // negative limit
-const float positionMax = positionLimit -1;   // assign zero to position half of the rotation, so subtract one
+const float encoderMin = positionLimit * -1; // negative limit
+const float encoderMax = positionLimit -1;   // assign zero to position half of the rotation, so subtract one
 
 volatile float speed_angular_velocity = 0; //for speed mode velocity reporting
 unsigned long speed_current_time_encoder = 0;
@@ -76,11 +83,18 @@ volatile bool doPID = false;
 
 
 /******** PID CONTROL ********/
+include <pid.h>
 
 //PID parameters
 float Kp = 1.0;              
 float Ki = 0.0;
 float Kd = 0.0;
+float Ts = 0.02;
+float N = 20;
+float uMin = -1;
+float uMax = +1;
+
+PID controller = PID(Kp,Ki,Kd,Ts,N,uMin,uMax);
 
 const float minKp = 0;
 const float maxKp = 999;
@@ -88,60 +102,10 @@ const float minKi = 0;
 const float maxKi = 999;
 const float minKd = 0;
 const float maxKd = 999;
-const float minDt = 1;
-const float maxDt = 1000;
+const float minTs = 1;
+const float maxTs = 1000;
 
-float PIDInterval = 20.0;       //ms, for timer interrupt 
-
-//pid calculated values
-volatile float error = 0;
-volatile float previous_error = 0;
-volatile float previous_previous_error = 0;
-volatile float error_speed = 0;
-volatile float previous_error_speed = 0;
-volatile float previous_previous_error_speed = 0;
-volatile float proportional_term = 0;
-volatile float integral_term = 0;
-volatile float error_sum = 0;
-volatile float derivative_term = 0;
-volatile float PID_signal = 0;
-volatile float previous_PID_signal = 0;
-volatile float previous_previous_PID_signal = 0;
-
-//for both PID modes and error calculations
-volatile int encoderPos = 0;
-volatile int encoderPosLast = 0;
-volatile float encoderAngVel = 0;
-volatile int encoder_direction = 1;     //+1 CCW, -1 CW.
-volatile int encoder_direction_last = -1;
-volatile int encoder_direction_index = 1;
-volatile int encoder_positive_count = 0;
-volatile int encoder_negative_count = 0;
-
-unsigned long current_time_encoder = 0;
-unsigned long previous_time_encoder = 0;
-
-unsigned long current_time_index = 0;
-unsigned long previous_time_index = 0;
-
-//lowpass filter
-volatile float error_position_filter = 0.0;
-volatile float previous_error_position_filter = 0.0;
-volatile float previous_previous_error_position_filter = 0.0;
-volatile float error_speed_filter = 0.0;
-volatile float previous_error_speed_filter = 0.0;
-volatile float previous_previous_error_speed_filter = 0.0;
-
-// Position
-float setPointPosition = 0; //the position the user has set
-float minDrivePosition = -1.0;
-float maxDrivePosition = 1.0;
-
-// Speed 
-int maxSpeedPID = 200; // limit of the equipment, units rpm
-float setPointSpeed = 0;   //user set position for PID_Speed mode and DC_Motor mode
-float minDriveSpeed = -1.0;
-float maxDriveSpeed = 1.0;
+float PIDInterval = Ts * 1000;  //ms, for timer interrupt 
 
 // Timer
 #define CPU_HZ 48000000
@@ -186,11 +150,11 @@ int sameNeeded = 100;        //number of loops with the same encoder position to
 float newKp = 1.0;
 float newKi = 0.0;
 float newKd = 0.0;
-float newDt = 10;
+float newTs = 10;
 bool isNewKp = false;
 bool isNewKi = false;
 bool isNewKd = false;
-bool isNewDt = false;
+bool isNewTs = false;
 
 // SMStateChangeDCMotor
 float SMStateNewDCMotorSpeed = 0;
@@ -205,6 +169,7 @@ float SMStateNewPIDSpeed = 0;
 //=============================================================
 // Function Prototypes
 //=============================================================
+
 
 bool stopPIDSpeed(void);
 bool stopRawSpeed(void);
@@ -325,8 +290,6 @@ void SMStateStopped(void){
 
   SMState = STATE_STOPPED; //default next state
 
-  resetPIDSignal();
- 
   setPointPosition = encoderPos;
   setPointSpeed = 0;
   encoderAngVel = 0;
@@ -336,8 +299,6 @@ void SMStateStopped(void){
 void SMStateBeforeAwaitingStop(void){
 
   SMState = STATE_AWAITING_STOP; //default next state
- 
-  resetPIDSignal();
  
 }
 
@@ -754,130 +715,18 @@ void changePIDCoefficients(void) {
 	isNewKd = false;
   }
   
-  if (isNewDt) {
-	if (inRange(newDt, minDt, maxDt)) {
-	  PIDInterval = newDt;
+  if (isNewTs) {
+	if (inRange(newTs, minTs, maxTs)) {
+	  PIDInterval = newTs;
 	  setTimerFrequency(1000/PIDInterval); 
 	}
-	isNewDt = false;
+	isNewTs = false;
   }
 
   resetPIDSignal();
 }
 
-void resetPIDSignal(void){
-  PID_signal = 0;
-  previous_PID_signal = 0;
-  previous_previous_PID_signal = 0;
 
-  error = 0;
-  previous_error = 0;
-  previous_previous_error = 0;
-  error_speed = 0;
-  previous_error_speed = 0;
-  previous_previous_error_speed = 0;
-
-  error_speed_filter = 0;
-  previous_error_speed_filter = 0;
-  previous_previous_error_speed_filter = 0;
-
-  error_position_filter = 0;
-  previous_error_position_filter = 0;
-  previous_previous_error_position_filter = 0;
-
-  proportional_term = 0.0;
-  integral_term = 0.0;
-  derivative_term = 0.0;
-  
-}
-
-
-//DISCRETE TIME VERSION, with filter
-void calculateSpeedPID(void){
-    previous_previous_error_speed = previous_error_speed;
-    previous_error_speed = error_speed;
-
-    previous_previous_error_speed_filter = previous_error_speed_filter;
-    previous_error_speed_filter = error_speed_filter;
-
-    error_speed = (setPointSpeed - encoderAngVel)/100.0;
-
-    error_speed_filter = lowpass_filter(error_speed, previous_error_speed_filter);
-  
-  float delta_t = PIDInterval/1000.0;
-  float Ti = Kp/Ki;
-  float Td = Kd/Kp;
-
-  float delta_p = Kp*(error_speed - previous_error_speed);
-  proportional_term += delta_p;
-
-  float delta_i = Kp*delta_t*error_speed/Ti;
-  integral_term += delta_i;
-
-   float delta_d = Kp*(Td/delta_t)*(error_speed_filter - 2*previous_error_speed_filter + previous_previous_error_speed_filter);
-  derivative_term += delta_d; 
-
-  
- //float new_signal = Kp*(error_speed - previous_error_speed + delta_t*error_speed/Ti +(Td/delta_t)*(error_speed_filter - 2*previous_error_speed_filter + previous_previous_error_speed_filter));
-
-  float new_signal = delta_p + delta_i + delta_d;
-  
-  PID_signal += new_signal;
-    
-}
-
-
-////DISCRETE TIME VERSION with filter
-void calculatePositionPID(void){
-    previous_previous_error = previous_error;
-    previous_error = error;
-
-    previous_previous_error_position_filter = previous_error_position_filter;
-    previous_error_position_filter = error_position_filter;
-    
-  float error_pos = encoderPos - setPointPosition;
-  int dir = error_pos / abs(error_pos);    //should be +1 or -1.
-  
-  float error_pos_inverse = 2*positionLimit - abs(error_pos);
-
-  if(abs(error_pos) <= abs(error_pos_inverse)){
-    error = error_pos;
-  } else {
-    error = -1*dir*error_pos_inverse;
-  }
-  //convert error to an angular error in deg
-  error = error*180.0/positionLimit;
-
-  error_position_filter = lowpass_filter(error, previous_error_position_filter);
-  
-  
-  float delta_t = PIDInterval/1000.0;
-  float Ti = Kp/Ki;
-  float Td = Kd/Kp;
-
-  float delta_p = Kp*(error - previous_error);
-  proportional_term += delta_p;
-
-  float delta_i = Kp*delta_t*error/Ti;
-  integral_term += delta_i;
-
-  float delta_d =  Kp*(Td/delta_t)*(error_position_filter - 2*previous_error_position_filter + previous_previous_error_position_filter);
-  derivative_term += delta_d; 
-  
-  float new_signal = delta_p + delta_i + delta_d;
-  
-  PID_signal += new_signal;
-    
-
-}
-
-
-// TODO consider the delay that (any!) filter introduces
-// Plant will low pass filter to a certain extent.
-float lowpass_filter(float input, float previous_output){
-  float a = 0.1;
-  return (1-a)*previous_output + a*input;
-}
 
 float deadband(float input, float band){
   if(abs(input) <= band){
@@ -1063,13 +912,13 @@ StateType readSerialJSON(StateType SMState){
 	  }
 	  
       if(!doc["dt"].isNull()){
-		newDt = doc["dt"];
-		isNewDt = true;
+		newTs = doc["dt"];
+		isNewTs = true;
       } else {
-		isNewDt = false;
+		isNewTs = false;
 	  }
 
-	  if (isNewKp || isNewKi || isNewKd || isNewDt){
+	  if (isNewKp || isNewKi || isNewKd || isNewTs){
 		if ( SMState == STATE_PID_POSITION_MODE) {
 		  SMState = STATE_CHANGE_PID_POSITION_COEFFICIENTS;
 		} else if (SMState == STATE_PID_SPEED_MODE) {
