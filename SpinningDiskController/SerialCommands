@@ -63,6 +63,10 @@
 {"set":"position","to":60}
 {"set":"position","to":100}
 {"set":"position","to":300}
+{"set":"position","to":150}
+{"set":"position","to":249}
+{"set":"position","to":-220}
+{"set":"position","to":0}
 
 {"set":"show","to":"none"}
 {"set":"show","to":"long"}
@@ -85,7 +89,7 @@
 {"set":"p","fcd_cw":0}
 {"set":"p","fcd_ccw":0}
 {"set":"p","fcw":5.0}
-{"set":"p","pre":120000}
+{"set":"p","pre":32000}
 
 
 
