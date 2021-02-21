@@ -26,12 +26,12 @@ bool development = true;
 /********** HEADERS ******************/
 #include "ArduinoJson-v6.9.1.h"
 #include <Encoder.h>
-//#include <iomanip>
 #include <MotorControllerPmodHB3SAMD21.h>
 #include <pid.h>
-//#include <string>
-//#include <sstream>
 #include <rotaryPlant.h>
+
+// string manipulation is using over 50% of the programme space, so focus on removing them
+
 
 /******** DC MOTOR ******/
 
@@ -69,7 +69,7 @@ float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 #define indexPin 11
 
 Encoder encoder(encoderPinA, encoderPinB);
-const float encoderPPR = 500;
+const float encoderPPR = 2000;
 const float LPFCoefficient = 0.1;
 const float timeToSeconds = 1e-6;
 
@@ -391,8 +391,10 @@ void stateStoppingAfter(void) {
 void stateStopped(void) {
 
   state = STATE_STOPPED; //default next state
-
-  // empty state
+  if (doReport) { //flag set in interrupt routine
+    report();
+    doReport = false; //clear flag so can run again later
+  }
 
 }
 
@@ -1073,9 +1075,6 @@ StateType readSerialJSON(StateType state) {
 //
 //===================================================================================
 
-void report(void){}
-
-/*
 void report(void)
 {
   // Don't detach interrupts because then we lose counts.
@@ -1099,7 +1098,7 @@ void report(void)
     Serial.println(frictionCompWindow);
 	return;
   }
-  
+  /*
   std::stringstream pos;
   pos << std::fixed << std::setprecision(3) << positionToExternalUnits(disk.getPosition());
   
@@ -1139,10 +1138,33 @@ void report(void)
   strcpy(writeBuffer, msg.c_str());
 	 
   Serial.println(writeBuffer);
+  */
+  Serial.print("{\"t\":");
+  Serial.print(millis());
+  Serial.print(",\"p\":");
+  Serial.print(positionToExternalUnits(disk.getPosition()));
+  Serial.print(",\"v\":");
+  Serial.print(positionToExternalUnits(disk.getVelocity()));
+  
+  if (show_mode == SHOW_LONG) {
 
+	if (state == STATE_POSITION_DURING) {
+ 
+	  Serial.print(",\"c\":");
+	  Serial.print(positionToExternalUnits(controller.getCommand()));
+
+	} else if (state == STATE_SPEED_DURING) {
+	  
+	  Serial.print(",\"c\":");
+	  Serial.print(velocityToExternalUnits(controller.getCommand()));
+	}
   }
+  
+  Serial.println("}");
+  
+}
 
-  }*/
+ 
 
 //===================================================================================
 //======================TIMER INTERRUPT FUNCTIONS====================================
