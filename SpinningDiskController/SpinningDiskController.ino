@@ -532,7 +532,7 @@ void stateSpeedDuring(void) {
   if (doPID) {
     c = controller.getCommand();
     v = disk.getVelocity();
-	error =  c - v;
+	error =  c - v + 0.15;
 
 	y = controller.update(v);
 	
