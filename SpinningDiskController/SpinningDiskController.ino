@@ -25,6 +25,7 @@ bool development = true;
 
 /********** HEADERS ******************/
 #include "ArduinoJson-v6.9.1.h"
+#include <dcmotor.h>
 #include <Encoder.h>
 #include <MotorControllerPmodHB3SAMD21.h>
 #include <pid.h>
@@ -45,15 +46,48 @@ const int offset = 1; // If motor spins in the opposite direction then you can c
 MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset, 240000); //240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
 
-float DCMotorMaxRPS = 40; // this is an estimated value, for information purposes
+/******* Drive signals ********/
 
-// Friction compensation
+// MOTOR
+static float plantForMotor[] = {-100,100}; //+/- 100% in the app
+static float driveForMotor[] = {-0.5,0.5}; // max 50% drive
+static int sizeMotor = 2;
+Driver driverMotor = Driver(plantForMotor, driveForMotor, sizeMotor);
+
+
+// POSITION
+static float plantForPosition[] = {-0.5,+0.5}; // max error is when half a revolution away
+static float driveForPosition[] = {-1,1}; // max 50% drive
+static int sizePosition = 2;
+Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
+
+float dp = 1e-3; 
+static float plantForPosition2[] = {-0.5,   -dp, 0, dp,   0.5}; 
+static float driveForPosition2[] = {-0.38,        -0.38, 0, 0.38, 0.38}; 
+static int sizePosition2 = 5;
+
+
+// SPEED
+float SpeedMaxRPS = 20; // we can probably get to ~2500 rpm if we risk the bearings
+static float plantForSpeed[] = {-SpeedMaxRPS,SpeedMaxRPS}; //+/- 100% in the app
+static float driveForSpeed[] = {-1,1}; // max 50% drive
+static int sizeSpeed = 2;
+Driver driverSpeed = Driver(plantForSpeed, driveForSpeed, sizeSpeed);
+
+float ds = 1e-3;
+static float plantForSpeed2[] = {-SpeedMaxRPS,   -ds, 0, ds,   SpeedMaxRPS}; 
+static float driveForSpeed2[] = {-0.38,        -0.38, 0, 0.38, 0.38}; 
+static int sizeSpeed2 = 5;
+
+// these are not used just now .....
 bool enableFrictionComp = true;
 float frictionCompStaticCW = (1.8/12.0)*255; //was 1.8
 float frictionCompStaticCCW = (1.7/12.0)*255;  //was 1.7
 float frictionCompWindow = 5.0;
 float frictionCompDynamicCW = (1.0/12.0)*255; //was 1.0
 float frictionCompDynamicCCW = (0.9/12.0)*255; //was 0.9
+
+
 
 // Timer - to switch off motor at end of a run
 
@@ -493,7 +527,6 @@ void stateSpeedDuring(void) {
 
   if (doPID) {
 
-	if (debug) Serial.println("doing PID for speed");
     // TODO get velocity
 	// TODO do PID
     // TODO set drive
@@ -566,7 +599,6 @@ void statePositionDuring(void) {
   state = STATE_POSITION_DURING; 
 
   if (doPID) {
-	if (debug) Serial.println("doing PID for speed");
     // TODO get current position
     // TODO calculate PID
     // TODO set drive
@@ -662,7 +694,16 @@ void TimerInterrupt(void) {
 
 void setup() {
 
-  // encoder pins setup already
+  driverMotor.threshold = 0.0; //don't use second curve
+  driverMotor.useSecondCurveBelowThreshold = true;
+
+  driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
+  driverPosition.threshold = 1.0; //1rps
+  driverPosition.useSecondCurveBelowThreshold = true;
+  
+  driverSpeed.addSecondCurve(plantForSpeed2, driveForSpeed2, sizeSpeed2);
+  driverSpeed.threshold = 1.0; //1rps
+  driverSpeed.useSecondCurveBelowThreshold = true;
   
   lastCommandMillis = millis();
 
@@ -823,105 +864,6 @@ float secondsFromMicros(float t) {
   return t / 1000000.0f;
 }
 
-
-
-
-float deadband(float input, float band) {
-  if(abs(input) <= band) {
-    return 0.0;
-  } else if(input < -band) {
-    return (input + band);
-  } else {
-    return (input - band);
-  }
-}
-
-/*
-float friction_compensation_static(float drive_signal, float encoderAngVel, float error) {
-  //static
-  if(abs(encoderAngVel) < 5 && abs(drive_signal) > 0) {
-    if(error > frictionCompWindow) {
-      return frictionCompStaticCCW;
-    } else if(error < -frictionCompWindow) {
-      return -frictionCompStaticCW;
-    } else if(error > 0) {
-      return frictionCompStaticCCW * error/frictionCompWindow;
-    } else {
-      return -frictionCompStaticCW * error/frictionCompWindow;
-    }
-  }
-
-
-}
-
-//dynamic friction, no window
-float friction_compensation_dynamic(float drive_signal, float encoderAngVel, float error) {
-  if(drive_signal > 0) {
-    return frictionCompDynamicCCW;
-  } else if(drive_signal < 0) {
-    return -frictionCompDynamicCW;
-  } else {
-    return 0.0;
-  }
-
-}
-
-void updateDrivePosition(void) {
-  motor.drive(limitDrivePosition(addFC(PID_Signal)));
-}
-
-void updateDriveSpeed(void) {
-  motor.drive(limitDriveSpeed(addFC(PID_Signal)));
-}
-
-float limitDrivePosition(float drive) {
-  return limit(drive, minDrivePosition, maxDrivePosition)
-}
-
-float limitDriveSpeed(float drive) {
-  return limit(drive, minDriveSpeed, maxDriveSpeed)
-}
-
-float limit(float val, float min, float max) {
-
-  if(val  > max) {
-    return max;
-  }
-
-  if (val < min) {
-    return min
-  }
-
-  return val;
-
-}
-
-float addFC(float drive) {
-
-  if (enableFrictionComp) {
-    drive +=
-      friction_compensation_static(PID_signal, encoderAngVel, error_speed) +
-      friction_compensation_dynamic(PID_signal, encoderAngVel, error_speed);
-  }
-  return drive
-}
-
-void calculatePID(void) {
-  if (state == STATE_PID_SPEED_MODE) {
-    calculateSpeedPID();
-  } else if(state == STATE_PID_POSITION_MODE) {
-    calculatePositionPID();
-  }
-}
-
-void maybeCalculatePID(void) {
-  if (doCalculatePID) { //flag set in interrupt routine
-    calculatePID();
-    doCalculatePID = false; // clear flag so can run again later
-  }
-}
-
-*/
 
 
 //===================================================================================
@@ -1098,47 +1040,7 @@ void report(void)
     Serial.println(frictionCompWindow);
 	return;
   }
-  /*
-  std::stringstream pos;
-  pos << std::fixed << std::setprecision(3) << positionToExternalUnits(disk.getPosition());
   
-  std::stringstream vel;
-  vel << std::fixed << std::setprecision(3) << velocityToExternalUnits(disk.getVelocity());
-
-	
-  std::string spos = pos.str();
-  std::string svel = vel.str();
-  std::string stime = std::to_string(millis());
-
-  std::string msg = "{\"t\":" + stime + "{,\"p\":" + spos + ",\"v\":" + svel;
-
-  if (show_mode == SHOW_LONG) {
-
-	if (state == STATE_POSITION_DURING) {
-
-	  std::stringstream cmd;
-	  cmd << std::fixed << std::setprecision(3) << positionToExternalUnits(controller.getCommand());
-	  
-	  std::string scmd = cmd.str();
- 
-	msg += ",\"c\":" + scmd;
-
-	} else if (state == STATE_POSITION_DURING) {
-	  
-	  std::stringstream cmd;
-	  cmd << std::fixed << std::setprecision(3) << velocityToExternalUnits(controller.getCommand());
-	  std::string scmd = cmd.str();
- 
-	msg += ",\"c\":" + scmd;
-
-  }
-
-  msg += "}";
-
-  strcpy(writeBuffer, msg.c_str());
-	 
-  Serial.println(writeBuffer);
-  */
   Serial.print("{\"t\":");
   Serial.print(millis());
   Serial.print(",\"p\":");
