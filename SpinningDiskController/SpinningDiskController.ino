@@ -87,8 +87,6 @@ float frictionCompWindow = 5.0;
 float frictionCompDynamicCW = (1.0/12.0)*255; //was 1.0
 float frictionCompDynamicCCW = (0.9/12.0)*255; //was 0.9
 
-
-
 // Timer - to switch off motor at end of a run
 
 float lastCommandMillis = 0;
