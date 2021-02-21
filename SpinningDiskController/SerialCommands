@@ -36,8 +36,11 @@
 {"set":"mode","to":"speedPid"}	//set_speed parameter in rpm
 {"set":"mode","to":"speedRaw"}	//set_speed parameter 0 - 255
 {"set":"mode","to":"stop"}
-{"set":"speed","to":05}
+{"set":"speed","to":0}
+{"set":"speed","to":7}
 {"set":"speed","to":10}
+{"set":"speed","to":-10}
+{"set":"speed","to":-20}
 {"set":"speed","to":11}
 {"set":"speed","to":15}
 {"set":"speed","to":16}
@@ -51,6 +54,11 @@
 {"set":"speed","to":24}
 {"set":"speed","to":25}
 {"set":"speed","to":26}
+{"set":"speed","to":40}
+{"set":"speed","to":60}
+{"set":"speed","to":80}
+{"set":"speed","to":100}
+{"set":"speed","to":200}
 
 {"set":"speed","to":10}
 {"set":"speed","to":100}

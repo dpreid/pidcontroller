@@ -17,6 +17,7 @@
 
 // report additional information (may affect performance)
 bool debug = true;
+bool trace = false;
 
 // enable on-the-fly setting of additional tuning parameters
 bool development = true;
@@ -68,8 +69,8 @@ static int sizePosition2 = 5;
 
 
 // SPEED
-float SpeedMaxRPS = 20; // we can probably get to ~2500 rpm if we risk the bearings
-static float plantForSpeed[] = {-SpeedMaxRPS,SpeedMaxRPS}; //+/- 100% in the app
+float SpeedMaxRPS = 40; // we can probably get to ~2500 rpm if we risk the bearings
+static float plantForSpeed[] = {-SpeedMaxRPS/20,SpeedMaxRPS/20}; //+/- 100% in the app
 static float driveForSpeed[] = {-1,1}; // max 50% drive
 static int sizeSpeed = 2;
 Driver driverSpeed = Driver(plantForSpeed, driveForSpeed, sizeSpeed);
@@ -102,7 +103,7 @@ float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 
 Encoder encoder(encoderPinA, encoderPinB);
 const float encoderPPR = 2000;
-const float LPFCoefficient = 0.1;
+const float LPFCoefficient = 0.5;
 const float timeToSeconds = 1e-6;
 
 RotaryPlant disk = RotaryPlant(encoderPPR, LPFCoefficient, timeToSeconds);
@@ -171,7 +172,7 @@ char writeBuffer[REPORT_SIZE];
 #define SHOW_LONG 2
 #define SHOW_FC 3
 
-volatile int show_mode = SHOW_SHORT;
+volatile int show_mode = SHOW_LONG;
 
 int report_integer = 1;          //an integer multiple of the PIDInterval for reporting data set to 5 for speed modes, 1 for position mode.
 int report_count = 0;
@@ -209,8 +210,8 @@ float positionCommandMax = +0.5;
 
 // SMStateChangePIDSpeed
 float speedChangeCommand = 0;
-float speedCommandMin = -1;
-float speedCommandMax = +1;
+float speedCommandMin = -40; //rps
+float speedCommandMax = +40; //rps
 
 // TODO sort out normalisation of speed command based on defined plant maximum
 // TODO consider linearising the drive to bring constant-gain regime down to slower
@@ -501,7 +502,8 @@ void stateMotorAfter(void) {
   
   motorCommand = 0;
 
-  // TODO set motor to zero here (else timer shutdown does not work)
+  motor.brake(); 
+	
   if (debug) Serial.print("{\"state\":\"MotorAfter\"}");
 }
 
@@ -514,8 +516,9 @@ void stateSpeedBefore(void) {
   
   speedChangeCommand = 0;
 
-  report_integer = 5;
+  controller.setCommand(speedChangeCommand);
 
+  report_integer = 5;
 }
 
 
@@ -523,16 +526,39 @@ void stateSpeedDuring(void) {
 
   state = STATE_SPEED_DURING; 
 
+  float v, y, yp;
+  float c, error, errp;
+  
   if (doPID) {
+    c = controller.getCommand();
+    v = disk.getVelocity();
+	error =  c - v;
 
-    // TODO get velocity
-	// TODO do PID
-    // TODO set drive
+	y = controller.update(v);
+	
+	errp = driverSpeed.drive(-error,v);
+	yp = driverSpeed.drive(y,v);
+	motor.drive(errp);
 
   }
 
   if (doReport) { //flag set in interrupt routine
     report();
+	if (debug) {
+	  Serial.print("c=");
+	  Serial.print(controller.getCommand());
+	  Serial.print(", v=");
+	  Serial.print(v);
+	  Serial.print(", err=");
+	  Serial.print(error);
+	  Serial.print(", *errp=");
+	  Serial.print(errp);	  
+	  Serial.print(", y=");	  
+	  Serial.print(y);
+	  Serial.print(", yp=");
+	  Serial.println(yp);
+	}
+	
     doReport = false; //clear flag so can run again later
   }
 
@@ -550,6 +576,10 @@ void stateSpeedChangeCommand(void) {
 
   if (abs(speedChangeCommand) <= speedCommandMax) {
 	controller.setCommand(speedChangeCommand);
+	if (debug) {
+	  Serial.print("new speed command=");
+	  Serial.println(controller.getCommand());
+	}
   }
 
 }
@@ -698,10 +728,12 @@ void setup() {
   driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
   driverPosition.threshold = 1.0; //1rps
   driverPosition.useSecondCurveBelowThreshold = true;
+
   
   driverSpeed.addSecondCurve(plantForSpeed2, driveForSpeed2, sizeSpeed2);
   driverSpeed.threshold = 1.0; //1rps
   driverSpeed.useSecondCurveBelowThreshold = true;
+  
   
   lastCommandMillis = millis();
 
@@ -887,6 +919,10 @@ StateType readSerialJSON(StateType state) {
       if(state == STATE_SPEED_DURING) {
         state = STATE_SPEED_CHANGE_COMMAND;
         speedChangeCommand = velocityFromExternalUnits(doc["to"]);
+		if (debug) {
+		  Serial.print("speedChangeCommand=");
+		  Serial.println(speedChangeCommand);
+		}
       } else if(state == STATE_MOTOR_DURING) {
         state = STATE_MOTOR_CHANGE_COMMAND;
         motorChangeCommand = doc["to"];
@@ -1044,7 +1080,7 @@ void report(void)
   Serial.print(",\"p\":");
   Serial.print(positionToExternalUnits(disk.getPosition()));
   Serial.print(",\"v\":");
-  Serial.print(positionToExternalUnits(disk.getVelocity()));
+  Serial.print(velocityToExternalUnits(disk.getVelocity()));
   
   if (show_mode == SHOW_LONG) {
 
