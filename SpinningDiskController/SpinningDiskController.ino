@@ -69,14 +69,14 @@ static int sizePosition2 = 5;
 
 
 // SPEED
-float SpeedMaxRPS = 40; // we can probably get to ~2500 rpm if we risk the bearings
-static float plantForSpeed[] = {-SpeedMaxRPS/20,SpeedMaxRPS/20}; //+/- 100% in the app
+float speedMaxRPS = 40; // we can probably get to ~2500 rpm if we risk the bearings
+static float plantForSpeed[] = {-speedMaxRPS/10,speedMaxRPS/10}; //+/- 100% in the app
 static float driveForSpeed[] = {-1,1}; // max 50% drive
 static int sizeSpeed = 2;
 Driver driverSpeed = Driver(plantForSpeed, driveForSpeed, sizeSpeed);
 
 float ds = 1e-3;
-static float plantForSpeed2[] = {-SpeedMaxRPS,   -ds, 0, ds,   SpeedMaxRPS}; 
+static float plantForSpeed2[] = {-speedMaxRPS,   -ds, 0, ds,   speedMaxRPS}; 
 static float driveForSpeed2[] = {-0.38,        -0.38, 0, 0.38, 0.38}; 
 static int sizeSpeed2 = 5;
 
@@ -516,6 +516,7 @@ void stateSpeedBefore(void) {
   
   speedChangeCommand = 0;
 
+  controller.setLimits(-speedMaxRPS,speedMaxRPS);
   controller.setCommand(speedChangeCommand);
 
   report_integer = 5;
@@ -534,10 +535,10 @@ void stateSpeedDuring(void) {
     v = disk.getVelocity();
 	error =  c - v + 0.15;
 
-	y = controller.update(-v);
+	y = controller.update(v);
 	
 	errp = driverSpeed.drive(-error,v);
-	yp = driverSpeed.drive(y,v);
+	yp = driverSpeed.drive(-y,v);
 	
 	motor.drive(yp);
 
@@ -556,16 +557,18 @@ void stateSpeedDuring(void) {
 	  Serial.print(errp);	  
 	  Serial.print(", y=");	  
 	  Serial.print(y);
+	  Serial.print(", e0=");	  
+	  Serial.print(controller.getError());	  
 	  Serial.print(", *yp=");
-	  Serial.println(yp);
+	  Serial.print(yp);
 	  Serial.print(", Kp=");
-	  Serial.println(controller.getKp());
+	  Serial.print(controller.getKp());
 	  Serial.print(", Ki=");
-	  Serial.println(controller.getKi());	  
+	  Serial.print(controller.getKi());	  
 	  Serial.print(", Kd=");
-	  Serial.println(controller.getKd());
+	  Serial.print(controller.getKd());
 	  Serial.print(", Ts=");
-	  Serial.println(controller.getTs());
+	  Serial.print(controller.getTs());
 	  Serial.print(", N=");
 	  Serial.println(controller.getN());	  
 	}

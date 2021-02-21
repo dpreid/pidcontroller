@@ -66,6 +66,9 @@
 {"set":"parameters","kp":0.5, "ki":0, "kd":0, "dt":20}
 {"set":"timer","to":10}					//timer in seconds
 
+{"set":"parameters","kp":1} 
+
+
 {"set":"mode","to":"positionPid"}
 {"set":"position","to":50}
 {"set":"position","to":60}
