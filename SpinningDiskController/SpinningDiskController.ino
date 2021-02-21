@@ -534,11 +534,12 @@ void stateSpeedDuring(void) {
     v = disk.getVelocity();
 	error =  c - v + 0.15;
 
-	y = controller.update(v);
+	y = controller.update(-v);
 	
 	errp = driverSpeed.drive(-error,v);
 	yp = driverSpeed.drive(y,v);
-	motor.drive(errp);
+	
+	motor.drive(yp);
 
   }
 
@@ -551,12 +552,22 @@ void stateSpeedDuring(void) {
 	  Serial.print(v);
 	  Serial.print(", err=");
 	  Serial.print(error);
-	  Serial.print(", *errp=");
+	  Serial.print(", errp=");
 	  Serial.print(errp);	  
 	  Serial.print(", y=");	  
 	  Serial.print(y);
-	  Serial.print(", yp=");
+	  Serial.print(", *yp=");
 	  Serial.println(yp);
+	  Serial.print(", Kp=");
+	  Serial.println(controller.getKp());
+	  Serial.print(", Ki=");
+	  Serial.println(controller.getKi());	  
+	  Serial.print(", Kd=");
+	  Serial.println(controller.getKd());
+	  Serial.print(", Ts=");
+	  Serial.println(controller.getTs());
+	  Serial.print(", N=");
+	  Serial.println(controller.getN());	  
 	}
 	
     doReport = false; //clear flag so can run again later
