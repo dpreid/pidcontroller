@@ -35,10 +35,8 @@ const int offset = 1; // If motor spins in the opposite direction then you can c
 
 MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset, 240000); //240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
-// Speed - raw 
-int maxSpeedRaw = 100; // percentage TODO check this needed?
 
-float max_rpm = 4000; //TODO check this needed?
+float DCMotorMaxRPS = 40; // this is an estimated value, for information purposes 
 
 // Friction compensation
 bool enableFrictionComp = true;
@@ -61,11 +59,13 @@ float longestShutdownTimerSeconds = 180;
 #define encoderPinB 2
 #define indexPin 11
 
-class Plant:
-  
-
-Encoder quad(encoderPinA, encoderPinB);
+Encoder encoder(encoderPinA, encoderPinB);
 const float encoderPPR = 500;
+const float LPFCoefficient = 0.1;
+const float timeToSeconds = 1e-6;
+
+RotaryPlant disk = RotaryPlant(encoderPPR, LPFCoefficient, timeToSeconds);
+
 
 const float positionLimit = 2 * encoderPPR; // using both edges on A & B lines for position
 const float encoderMin = positionLimit * -1; // negative limit
@@ -75,6 +75,8 @@ volatile float speed_angular_velocity = 0; //for speed mode velocity reporting
 unsigned long speed_current_time_encoder = 0;
 unsigned long speed_previous_time_encoder = 0;
 
+const float positionEpsilon = 1.0f / (float)encoderPPR;
+const float speedEpsilon = positionEpsion; //used to check if command is close to zero, value not critical.
 
 /****** INTERRUPTS *******/
 // flags for ISR to trigger heavy-weight tasks to run in main loop
@@ -141,10 +143,10 @@ unsigned long dta; // moving average, needs right shifting by 3 bits to get corr
 
 
 // SM Awaiting Stop
-int awaiting_stop_lastPos = 0;
-int awaiting_stop_thisPos = 0;
-int sameCount = 100;   
-int sameNeeded = 100;        //number of loops with the same encoder position to assume that motor is stopped.
+int awaitingStopP0 = 0;
+int awaitingStopP1 = 0;  
+int awaitingStopCount = 100;   
+int awaitingStopNeeded = 100;  //number of loops with the same encoder position to assume that motor is stopped, at rate of loop() (much faster than PID rate).
 
 // SMStateChange<MODE>Coefficients
 float newKp = 1.0;
@@ -157,13 +159,16 @@ bool isNewKd = false;
 bool isNewTs = false;
 
 // SMStateChangeDCMotor
-float SMStateNewDCMotorSpeed = 0;
+float DCMotorMaxSpeed = 1.0;
+float DCMotorChangeSpeed = 0;
+float DCMotorSetSpeed = 0;
 
 // SMStateChangePIDPosition
-float SMStateNewPIDPosition = 0;
+float changePIDPosition = 0;
 
 // SMStateChangePIDSpeed
-float SMStateNewPIDSpeed = 0;
+float changePIDSpeed = 0;
+
 
 
 //=============================================================
@@ -206,41 +211,47 @@ void maybeReport(void);
  */
 typedef enum
 {
-  STATE_BEFORE_AWAITING_STOP,
-  STATE_AWAITING_STOP,  //checking if the motor has stopped
-  STATE_STOPPED,        //no drive to motor
-  STATE_BEFORE_PID_SPEED_MODE,
-  STATE_PID_SPEED_MODE, //pid controller mode - 1st order, speed functions
-  STATE_CHANGE_PID_SPEED_SETPOINT,
-  STATE_CHANGE_PID_SPEED_COEFFICIENTS,
-  STATE_BEFORE_PID_POSITION_MODE,
-  STATE_PID_POSITION_MODE,  //pid controller - 2nd order, position functions
-  STATE_CHANGE_PID_POSITION_SETPOINT,
-  STATE_CHANGE_PID_POSITION_COEFFICIENTS,
-  STATE_BEFORE_DC_MOTOR_MODE,
-  STATE_DC_MOTOR_MODE,    //regular dc motor functions with no PID controller
-  STATE_CHANGE_DC_MOTOR_SETPOINT
+  STATE_STOPPING_BEFORE,
+  STATE_STOPPING_DURING,  //checking if the motor has stopped
+  STATE_STOPPING_AFTER,          //no drive to motor
+  STATE_MOTOR_BEFORE,
+  STATE_SPEED_DURING, //pid controller mode - 1st order, speed functions
+  STATE_SPEED_CHANGE_COMMAND,
+  STATE_SPEED_CHANGE_PARAM,
+  STATE_SPEED_AFTER,
+  STATE_SPEED_BEFORE,
+  STATE_SPEED_DURING, //pid controller mode - 1st order, speed functions
+  STATE_SPEED_CHANGE_COMMAND,
+  STATE_SPEED_CHANGE_PARAM,
+  STATE_SPEED_AFTER,
+  STATE_POSITION_BEFORE,
+  STATE_POSITION_DURING, //pid controller mode - 1st order, speed functions
+  STATE_POSITION_CHANGE_COMMAND,
+  STATE_POSITION_CHANGE_PARAM,
+  STATE_POSITION_AFTER,
 } StateType;
 
 //state Machine function prototypes
 //these are the functions that run whilst in each respective state.
-void SMStateBeforeAwaitingStop(void);
-void SMStateAwaitingStop(void);
-void SMStateStopped(void);
-void SMStateBeforePIDSpeed(void);
-void SMStatePIDSpeed(void);
-void SMStateChangePIDSpeedSetPoint(void);
-void SMStateChangePIDSpeedCoefficients(void);
-void SMStateAfterPIDSpeed(void);
-void SMStateBeforePosition(void);
-void SMStatePIDPosition(void);
-void SMStateChangePIDPositionSetPoint(void);
-void SMStateChangePIDPositionCoefficients(void);
-void SMStateAfterPIDPosition(void);
-void SMStateBeforeDCMotor(void);
-void SMStateDCMotor(void);
-void SMStateChangeDCMotorSetPoint(void);
-void SMStateAfterDCMotor(void);
+void stateStoppingBefore(void);
+void stateStoppingDuring(void);
+void stateStoppingAfter(void);
+void stateMotorBefore(void);
+void stateSpeedDuring(void);
+void stateSpeedChangeCommand(void);
+void stateSpeedChangeParam(void);
+void stateSpeedAfter(void);
+void stateSpeedBefore(void);
+void stateSpeedDuring(void);
+void stateSpeedChangeCommand(void);
+void stateSpeedChangeParam(void);
+void stateSpeedAfter(void);
+void statePositionBefore(void);
+void statePositionDuring(void);
+void statePositionChangeCommand(void);
+void statePositionChangeParam(void);
+void statePositionAfter(void);                   
+
 /**
  * Type definition used to define the state
  */
@@ -256,24 +267,25 @@ typedef struct
  * the function that should be executed for each state
  */
 StateMachineType StateMachine[] =
-{
-  {STATE_BEFORE_AWAITING_STOP, SMStateBeforeAwaitingStop},
-  {STATE_AWAITING_STOP, SMStateAwaitingStop},
-  {STATE_STOPPED, SMStateStopped},
-  {STATE_BEFORE_PID_SPEED_MODE, SMStateBeforePIDSpeed}, 
-  {STATE_PID_SPEED_MODE, SMStatePIDSpeed},
-  {STATE_CHANGE_PID_SPEED_SETPOINT, SMStateChangePIDSpeedSetPoint},
-  {STATE_CHANGE_PID_SPEED_COEFFICIENTS, SMStateChangePIDSpeedCoefficients},  
-  {STATE_AFTER_PID_SPEED_MODE, SMStateAfterPIDSpeed},
-  {STATE_BEFORE_PID_POSITION_MODE, SMStateBeforePIDPosition},  
-  {STATE_PID_POSITION_MODE, SMStatePIDPosition},
-  {STATE_CHANGE_PID_POSITION_SETPOINT, SMStateChangePIDPositionSetPoint},
-  {STATE_CHANGE_PID_POSITION_COEFFICIENTS, SMStateChangePIDPositionCoefficients},  
-  {STATE_PID_AFTER_POSITION_MODE, SMStateAfterPIDPosition},
-  {STATE_BEFORE_DC_MOTOR_MODE, SMStateBeforeDCMotor},  
-  {STATE_DC_MOTOR_MODE, SMStateDCMotor}
-  {STATE_CHANGE_DC_MOTOR_MODE, SMStateChangeDCMotor}
-  {STATE_AFTER_DC_MOTOR_SETPOINT, SMStateAfterDCMotorSetPoint}
+  { 
+  {STATE_STOPPING_BEFORE,                   stateStoppingBefore};                                
+  {STATE_STOPPING_DURING, 				   stateStoppingDuring};                  
+  {STATE_STOPPING_AFTER,  				   stateStoppingAfter};                   
+  {STATE_MOTOR_BEFORE,					   stateMotorBefore};                     
+  {STATE_SPEED_DURING, 					   stateSpeedDuring};                     
+  {STATE_SPEED_CHANGE_COMMAND,			   stateSpeedChangeCommand};              
+  {STATE_SPEED_CHANGE_PARAM,				   stateSpeedChangeParam};                
+  {STATE_SPEED_AFTER,					   stateSpeedAfter};                      
+  {STATE_SPEED_BEFORE,					   stateSpeedBefore};                     
+  {STATE_SPEED_DURING, 					   stateSpeedDuring};                     
+  {STATE_SPEED_CHANGE_COMMAND,			   stateSpeedChangeCommand};              
+  {STATE_SPEED_CHANGE_PARAM,				   stateSpeedChangeParam};                
+  {STATE_SPEED_AFTER,					   stateSpeedAfter};                      
+  {STATE_POSITION_BEFORE,				   statePositionBefore};                  
+  {STATE_POSITION_DURING, 				   statePositionDuring};                  
+  {STATE_POSITION_CHANGE_COMMAND,		   statePositionChangeCommand};           
+  {STATE_POSITION_CHANGE_PARAM,			   statePositionChangeParam};             
+  {STATE_POSITION_AFTER,					   statePositionAfter};                   
 };
  
 int numStates = 17;
@@ -304,24 +316,26 @@ void SMStateBeforeAwaitingStop(void){
 
 void SMStateAwaitingStop(void){
 
-  //TODO - consider using PID speed mode to stop faster.
+  // we coast to a stop for convenience because active braking with PIDPosition mode might end up oscillating
 
   SMState = STATE_AWAITING_STOP; //default next state
  
   motor.brake();
 
-  awaiting_stop_lastPos = awaiting_stop_thisPos;
-  awaiting_stop_thisPos = encoderPos;
+  awaitingStopP1 = awaitingStopP0;
+  awaitingStopP0 = disk.getPosition();
 
-  if (awaiting_stop_thisPos == awaiting_stop_lastPos){
-	sameCount -= 1;
+  if (cmpf(awaitingStopP0, awaitingStopP1, positionEpsilon)) {
+	awaitingStopCount -= 1;
   }
   else{
-	sameCount = sameNeeded;
+	awaitingStopCount = awaitingStopNeeded;
   }
+
+  maybeReport();
   
-  if (sameCount <= 0){
-	sameCount = sameNeeded; // avoid edge case on next stop event where enter stop mode at moment direction is reversing and encoder momentarily same value
+  if (awaitingStopCount <= 0){
+	awaitingStopCount = awaitingStopNeeded; // avoid edge case on next stop event where enter stop mode at moment direction is reversing and encoder momentarily same value
 	SMState = STATE_STOPPED;   
   } 
 }
@@ -331,9 +345,6 @@ void SMStateBeforeDCMotor(void){
 
   SMState = STATE_DC_MOTOR_MODE; //default next state
   
-  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderASpeed, RISING);
-  previous_time_encoder = micros();
-
   report_integer = 5;
   
 }
@@ -343,9 +354,16 @@ void SMStateDCMotor(void){
  
   SMState = STATE_DC_MOTOR_MODE; //default next state
 
-  if(stopRawSpeed()){
-    SMState = STATE_AWAITING_STOP;
+  if (doReport) { //flag set in interrupt routine
+	report();
+	doReport = false; //clear flag so can run again later
   }
+  
+  
+  if (millis() >= mode_start_time + shutdown_timer) {
+      SMState = STATE_AFTER_PID_SPEED_MODE;
+  }
+  
 }
 
 
@@ -353,16 +371,15 @@ void SMStateChangeDCMotorSetPoint(void) {
   
   SMState = STATE_DC_MOTOR_MODE;
 
-  if (abs(SMStateNewRawSpeed) <= maxRawSpeed) {
-	setPointSpeed =SMStateNewRawSpeed; //leave unchanged if outside range
+  if (abs(DCMotorChangeSpeed) <= DCMotorMaxSpeed) {
+	DCMotorSetSpeed = DCMotorChangeSpeed; //leave unchanged if outside range
   }
 }
 
 void SMStateAfterDCMotor(void){
 
   SMState = STATE_AWAITING_STOP;
-  
-  detachInterrupt(digitalPinToInterrupt(encoderPinA));
+
   
 }
 
@@ -372,11 +389,10 @@ void SMStateBeforePIDSpeed(void){
   SMState = STATE_PID_SPEED_MODE; //default next state
 
   attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderASpeed, RISING);
-  previous_time_encoder = micros();
+
 
   report_integer = 5;
 
-  resetPIDSignal();
 
 }
 
@@ -393,8 +409,16 @@ void SMStatePIDSpeed(void){
 	
   }
 
-  if(stopPIDSpeed()){
-    SMState = STATE_AFTER_PID_SPEED_MODE;
+  if (doReport) { //flag set in interrupt routine
+	report();
+	doReport = false; //clear flag so can run again later
+  }
+
+  // It's ok to wait in a state a long time if we are not using the motor
+  if (!cmpf(disk.getCommand(),0, speedEpsilon)) {
+	if (millis() >= mode_start_time + shutdown_timer) {
+	  SMState = STATE_AFTER_PID_SPEED_MODE;
+	}
   }
 }
 
@@ -419,7 +443,7 @@ void SMStateChangePIDSpeedSetPoint(void){
 void SMStateAfterPIDSpeed(void){
 
   SMState = STATE_AWAITING_STOP; //default next state
-  detachInterrupt(digitalPinToInterrupt(encoderPinA));
+
 
 }
 
@@ -431,11 +455,7 @@ void SMStateBeforePIDPosition(void){
   
   report_integer = 1;
   
-  attachInterrupt(digitalPinToInterrupt(encoderPinA), doEncoderAPosition, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(encoderPinB), doEncoderBPosition, CHANGE);
-  previous_time_encoder = micros();
 
-  resetPIDSignal();
 
 }
 
@@ -451,9 +471,20 @@ void SMStatePIDPosition(void){
 	// set drive
 	
   }
+  
+  if (doReport) { //flag set in interrupt routine
+	report();
+	doReport = false; //clear flag so can run again later
+  }
+  
   if(stopPIDPosition()){
     SMState = STATE_AFTER_PID_POSITION_MODE;
   }
+  // Disk might be oscillating so need to shutdown if it times out
+  if (millis() >= mode_start_time + shutdown_timer) {
+	  SMState = STATE_AFTER_PID_SPEED_MODE;
+  }
+
 }
 
 
@@ -461,10 +492,10 @@ void SMStateChangePIDPositionSetPoint(void){
 
   SMState = STATE_PID_POSITION_MODE; //default next state
 
-  if(new_position >= positionMin && new_position <= positionMax){
-    resetPIDSignal();
-    setPointPosition = new_position; //TODO rename setPointPosition
-    
+  if(changePIDPosition >= PIDPositionMin && changePIDPosition <= PIDPositionMax){
+	
+    pid.setCommand(changePIDPosition); 
+
   } else{
     Serial.println("{\"err\":\"position setpoint outside range\"}");
   }
@@ -542,6 +573,8 @@ void setup() {
 
   Serial.setTimeout(50);
   Serial.begin(57600);
+
+  disk.initialise(encoder.read(), micros());
   
   startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
@@ -550,28 +583,26 @@ void setup() {
 
 void loop() {
 
-  // do tasks flagged for action by interrupt routines
-  maybeReport()
- 
-  // update state machine
+  // update state machine (which will run tasks flagged by interrupts)
   SM_Run();
   
 }
 
 //===================================================================================
 //====================== SUPPORTING FUNCTIONS========================================
+//
+//
+//
+//            These may be used by one or more states
+//
+//
+//
+//
 //===================================================================================
 
-bool stopPIDSpeed(void) {
-  return (millis() >= mode_start_time + shutdown_timer) && (setPointSpeed != 0);
-}
-
-bool stopRawSpeed(void) {
-  return stopPIDSpeed();
-}
-
-bool stopPIDPosition(void) {
-  return millis() >= mode_start_time + shutdown_timer;
+//https://noobtuts.com/cpp/compare-float-values
+bool cmpf(float a, float b, float epsilon) {
+  return (fabs(a - b) < epsilon);
 }
 
 
@@ -584,110 +615,6 @@ void newShutdownTimer(float time){
   }
 }
 
-
-
-// Interrupt on encoder A changing state
-// calculate position, direction and speed
-void doEncoderAPosition() {
-  previous_time_encoder = current_time_encoder;
-  current_time_encoder = micros();
-
-  bool A_set = digitalRead(encoderPinA) == HIGH;
-  bool B_set = digitalRead(encoderPinB) == HIGH;
-  
-  // Idiosyncractically, a negative encoder direction
-  // equates to positive count increase
-  // TODO - make this consistent, and fix all the maths that relies on it
-
-  encoder_direction = ((A_set != B_set) ? -1 : +1);
-  
-  encoderPos -= encoder_direction;
-
- 
-  unsigned long dt = current_time_encoder - previous_time_encoder; 
-
-  if (dt > 0 ) { //not overflow
-	encoderAngVel = encoder_direction * 60e6 / (dt * encoderPPR);
-  }
-  
-  if (encoderPos == 0) { // we can't skip this because increments are by one
-	speed_current_time_encoder = micros();
-	unsigned long speed_dt = speed_current_time_encoder - speed_previous_time_encoder;
-	
-	if (speed_dt > 0 ) { //not overflow
-	  speed_angular_velocity =  encoder_direction * 60e6 / (speed_dt); //rpm 
-	  }
-
-	if (debug) {
-	  Serial.print("{\"enc_ang_vel\":");
-	  Serial.print(encoderAngVel);
-	  Serial.print(",\"time\":");
-	  Serial.print(millis()); 
-	  Serial.println("}");  
-	}
-	
-	speed_previous_time_encoder = speed_current_time_encoder; 
-  }
-}
-
-// interrupt on A rising edge only
-void doEncoderASpeed() {
-
-  bool A_set = digitalRead(encoderPinA) == HIGH;
-  bool B_set = digitalRead(encoderPinB) == HIGH;
-  
-  // Idiosyncractically, a negative encoder direction
-  // equates to positive count increase
-  // TODO - make this consistent, and fix all the maths that relies on it
-
-  encoder_direction = ((A_set != B_set) ? -1 : +1);
-  encoderPos -= encoder_direction;
-  
-  if (encoderPos == 0) { 
-	speed_current_time_encoder = micros();
-	unsigned long speed_dt = speed_current_time_encoder - speed_previous_time_encoder;
-	
-	if (speed_dt > 0 ) { //not overflow
-	  speed_angular_velocity =  encoder_direction * 60e6 / (speed_dt); //rpm 
-	  }
-
-	if (debug) {
-	  Serial.print("{\"enc_ang_vel\":");
-	  Serial.print(encoderAngVel);
-	  Serial.print(",\"time\":");
-	  Serial.print(millis()); 
-	  Serial.println("}");  
-	}
-	
-	speed_previous_time_encoder = speed_current_time_encoder; 
-  }
-}
-
-
-// Interrupt on B changing state
-void doEncoderBPosition() {
-  
-  bool A_set = digitalRead(encoderPinA) == HIGH;
-  bool B_set = digitalRead(encoderPinB) == HIGH;
-
-  encoder_direction = ((A_set != B_set) ? -1 : +1);
-  encoderPos -= encoder_direction;
-
-  encoderWrap();
-
-}
-
-void encoderWrap(void){
-  if (encoderPos >= position_limit) { // top positive limit can't be reached
-    encoderWrapCW++;
-    encoderWrapCCW = 0;
-    encoderPos -= 2*position_limit; // so turn it into bottom limit
-  } else if (encoderPos < -position_limit) { //bottom positive limit CAN be reached
-	encoderWrapCCW++;
-	encoderWrapCW = 0;
-	encoderPos += 2*position_limit; 
-  }
-}
 
 void inRange(float val, float min, float max) {
   return (val >= min && val <= max);
@@ -822,12 +749,6 @@ void maybeCalculatePID(void){
   }
 }
 
-void maybeReport(void){
-  if (doReport) { //flag set in interrupt routine
-	report();
-	doReport = false; //clear flag so can run again later
-  }
-}
 
 
 
@@ -851,11 +772,11 @@ StateType readSerialJSON(StateType SMState){
 
     if(strcmp(set, "speed")==0){
       if(SMState == STATE_PID_SPEED_MODE){
-		SMState = STATE_CHANGE_PID_SPEED_SETPOINT;
-		SMStateNewPIDSpeed = doc["to"];
+		SMState = STATE_PID_SPEED_CHANGE_SETPOINT;
+		changePIDSpeed = doc["to"];
       } else if(SMState == STATE_DC_MOTOR_MODE) {
-		SMState = STATE_CHANGE_DC_MOTOR_MODE;
-		SMStateNewRawSpeed = doc["to"];
+		SMState = STATE_DC_MOTOR_CHANGE_SETPOINT;
+		DCMotorChangeSpeed = doc["to"];
       } else {
 		Serial.println("{\"err\":\"in wrong state to set speed\"}");
       }
@@ -863,7 +784,7 @@ StateType readSerialJSON(StateType SMState){
     else if(strcmp(set, "position")==0){
       if(SMState == STATE_PID_POSITION_MODE){
 		SMState = STATE_CHANGE_PID_POSITION_SETPOINT;
-		SMStateNewPIDPosition = doc["to"];
+		changePIDPosition = doc["to"];
       } else{
 		Serial.println("{\"err\":\"in wrong state to set position\"}");
       }
