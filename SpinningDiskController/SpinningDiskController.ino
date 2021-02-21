@@ -197,7 +197,7 @@ bool isNewKd = false;
 bool isNewTs = false;
 
 // SMStateChangeDCMotor
-float motorMaxCommand = 1.0;
+float motorMaxCommand = 100.0; //external world units are 0 to +/-100%
 float motorChangeCommand = 0;
 float motorCommand = 0;
 
@@ -473,8 +473,8 @@ void stateMotorChangeCommand(void) {
    if (abs(motorChangeCommand) <= motorMaxCommand) {
 	 
     motorCommand = motorChangeCommand; //leave unchanged if outside range
-	
-	// TODO Set motor drive
+
+	motor.drive(driverMotor.drive(motorCommand, 0.0)); //driverMotors handles conversion from +/-100% to +/-1.0
 	
 	if (debug) {
 	  Serial.print("Changed motorCommand to ");
