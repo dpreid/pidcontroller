@@ -134,7 +134,7 @@ volatile bool doPID = false;
 float Kp = 1.0;
 float Ki = 0.0;
 float Kd = 0.0;
-float Ts = 0.02;
+float Ts = 0.005;
 float N = 20;
 float uMin = -1;
 float uMax = +1;
@@ -176,6 +176,8 @@ char writeBuffer[REPORT_SIZE];
 
 volatile int show_mode = SHOW_LONG;
 
+int reportSpeed = 20;
+int reportPosition = 4;
 int report_integer = 1;          //an integer multiple of the PIDInterval for reporting data set to 5 for speed modes, 1 for position mode.
 int report_count = 0;
 
@@ -442,7 +444,7 @@ void stateMotorBefore(void) {
   motorChangeCommand = 0; 
   motorCommand = 0; //start with motor off
 
-  report_integer = 5;
+  report_integer = reportSpeed;
 
 }
 
@@ -521,7 +523,7 @@ void stateSpeedBefore(void) {
   controller.setLimits(-speedMaxRPS,speedMaxRPS);
   controller.setCommand(speedChangeCommand);
 
-  report_integer = 5;
+  report_integer = reportSpeed;
 }
 
 
@@ -629,7 +631,7 @@ void statePositionBefore(void) {
   positionChangeCommand = disk.getPosition();
   controller.setLimits(positionCommandMin, positionCommandMax);
   controller.setCommand(positionChangeCommand);
-  report_integer = 1;
+  report_integer = reportPosition;
   
 }
 
@@ -774,9 +776,9 @@ void setup() {
   driverMotor.threshold = 0.0; //don't use second curve
   driverMotor.useSecondCurveBelowThreshold = true;
 
-  driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
-  driverPosition.threshold = 0.1; //1rps
-  driverPosition.useSecondCurveBelowThreshold = true;
+  //driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
+  //driverPosition.threshold = 0.1; //1rps
+  //driverPosition.useSecondCurveBelowThreshold = true;
 
   
   driverSpeed.addSecondCurve(plantForSpeed2, driveForSpeed2, sizeSpeed2);

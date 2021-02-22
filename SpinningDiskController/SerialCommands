@@ -71,9 +71,21 @@
 
 {"set":"mode","to":"positionPid"}
 {"set":"parameters","kp":1}
+{"set":"parameters","kp":3}
+{"set":"parameters","kp":4}
+{"set":"position","to":0}
+{"set":"position","to":1.0}
+
+{"set":"parameters","kp":0.5}
+{"set":"position","to":3.0}
 {"set":"position","to":2.0}
 {"set":"position","to":1.0}
 {"set":"position","to":0}
+{"set":"position","to":-1.0}
+{"set":"position","to":-2.0}
+{"set":"position","to":-2.5}
+{"set":"position","to":-3.0}
+
 
 {"set":"position","to":50}
 {"set":"position","to":60}
