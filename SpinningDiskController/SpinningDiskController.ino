@@ -70,7 +70,7 @@ static int sizePosition2 = 5;
 
 // SPEED
 float speedMaxRPS = 40; // we can probably get to ~2500 rpm if we risk the bearings
-static float plantForSpeed[] = {-speedMaxRPS/10,speedMaxRPS/10}; //+/- 100% in the app
+static float plantForSpeed[] = {-speedMaxRPS,speedMaxRPS}; //+/- 100% in the app
 static float driveForSpeed[] = {-1,1}; // max 50% drive
 static int sizeSpeed = 2;
 Driver driverSpeed = Driver(plantForSpeed, driveForSpeed, sizeSpeed);
@@ -103,7 +103,7 @@ float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 
 Encoder encoder(encoderPinA, encoderPinB);
 const float encoderPPR = 2000;
-const float LPFCoefficient = 0.5;
+const float LPFCoefficient = 0.8;
 const float timeToSeconds = 1e-6;
 
 RotaryPlant disk = RotaryPlant(encoderPPR, LPFCoefficient, timeToSeconds);
@@ -747,7 +747,8 @@ void setup() {
   driverSpeed.addSecondCurve(plantForSpeed2, driveForSpeed2, sizeSpeed2);
   driverSpeed.threshold = 1.0; //1rps
   driverSpeed.useSecondCurveBelowThreshold = true;
-  
+  driverSpeed.primaryOffsetPos = 0.3;
+  driverSpeed.primaryOffsetNeg = -0.3;
   
   lastCommandMillis = millis();
 
