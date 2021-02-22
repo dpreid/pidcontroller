@@ -62,9 +62,10 @@ static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
 
-float dp = 1e-3; 
+float dp = 1e-3;
+float pf = 0.1;
 static float plantForPosition2[] = {-0.5,   -dp, 0, dp,   0.5}; 
-static float driveForPosition2[] = {-0.38,        -0.38, 0, 0.38, 0.38}; 
+static float driveForPosition2[] = {-pf,        -pf, 0, pf, pf}; 
 static int sizePosition2 = 5;
 
 
@@ -76,8 +77,9 @@ static int sizeSpeed = 2;
 Driver driverSpeed = Driver(plantForSpeed, driveForSpeed, sizeSpeed);
 
 float ds = 1e-3;
+float sf = 0.38;
 static float plantForSpeed2[] = {-speedMaxRPS,   -ds, 0, ds,   speedMaxRPS}; 
-static float driveForSpeed2[] = {-0.38,        -0.38, 0, 0.38, 0.38}; 
+static float driveForSpeed2[] = {-sf,        -sf, 0, sf, sf}; 
 static int sizeSpeed2 = 5;
 
 // these are not used just now .....
@@ -528,16 +530,14 @@ void stateSpeedDuring(void) {
   state = STATE_SPEED_DURING; 
 
   float v, y, yp;
-  float c, error, errp;
+  float c;
   
   if (doPID) {
     c = controller.getCommand();
     v = disk.getVelocity();
-	error =  c - v + 0.15;
-
+    
 	y = controller.update(v);
-	
-	errp = driverSpeed.drive(-error,v);
+
 	yp = driverSpeed.drive(-y,v);
 	
 	motor.drive(yp);
@@ -552,9 +552,7 @@ void stateSpeedDuring(void) {
 	  Serial.print(", v=");
 	  Serial.print(v);
 	  Serial.print(", err=");
-	  Serial.print(error);
-	  Serial.print(", errp=");
-	  Serial.print(errp);	  
+	  Serial.print(c-v);
 	  Serial.print(", y=");	  
 	  Serial.print(y);
 	  Serial.print(", e0=");	  
@@ -615,9 +613,8 @@ void stateSpeedAfter(void) {
 
   state = STATE_STOPPING_BEFORE;
   
-  if (debug) Serial.println("stateSpeedAfter");
+  // empty state
 			 
-  // TODO set motor drive to zero 
 
 }
 
@@ -629,8 +626,9 @@ void statePositionBefore(void) {
 
   lastCommandMillis = millis();
   
-  positionChangeCommand = 0;
-
+  positionChangeCommand = disk.getPosition();
+  controller.setLimits(positionCommandMin, positionCommandMax);
+  controller.setCommand(positionChangeCommand);
   report_integer = 1;
   
 }
@@ -640,15 +638,52 @@ void statePositionDuring(void) {
 
   state = STATE_POSITION_DURING; 
 
+  float v, p, y, yp;
+  float c, error, errp;
+  
   if (doPID) {
-    // TODO get current position
-    // TODO calculate PID
-    // TODO set drive
+
+    c = controller.getCommand();
+	p = disk.getPosition();
+    v = disk.getVelocity();
+
+	y = controller.update(p);
+
+	yp = driverPosition.drive(-y,v);
+	
+	motor.drive(yp);
 
   }
 
   if (doReport) { //flag set in interrupt routine
-    report();
+    //report();
+	if (debug) {
+	  Serial.print("c=");
+	  Serial.print(controller.getCommand());
+	  Serial.print(", p=");
+	  Serial.print(p);	  
+	  Serial.print(", v=");
+	  Serial.print(v);
+	  Serial.print(", err=");
+	  Serial.print(c-v);
+	  Serial.print(", y=");	  
+	  Serial.print(y);
+	  Serial.print(", e0=");	  
+	  Serial.print(controller.getError());	  
+	  Serial.print(", *yp=");
+	  Serial.print(yp);
+	  Serial.print(", Kp=");
+	  Serial.print(controller.getKp());
+	  Serial.print(", Ki=");
+	  Serial.print(controller.getKi());	  
+	  Serial.print(", Kd=");
+	  Serial.print(controller.getKd());
+	  Serial.print(", Ts=");
+	  Serial.print(controller.getTs());
+	  Serial.print(", N=");
+	  Serial.println(controller.getN());	  
+	}
+	
     doReport = false; //clear flag so can run again later
   }
 
@@ -740,7 +775,7 @@ void setup() {
   driverMotor.useSecondCurveBelowThreshold = true;
 
   driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
-  driverPosition.threshold = 1.0; //1rps
+  driverPosition.threshold = 0.1; //1rps
   driverPosition.useSecondCurveBelowThreshold = true;
 
   
