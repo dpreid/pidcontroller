@@ -44,7 +44,7 @@ bool development = true;
 
 const int offset = 1; // If motor spins in the opposite direction then you can change this to -1.
 
-MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset, 48000); //240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
+MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset, 720000); //240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
 
 /******* Drive signals ********/
@@ -140,7 +140,7 @@ volatile bool requestZeroPosition;
 float Kp = 1.0;
 float Ki = 0.0;
 float Kd = 0.0;
-float Ts = 0.005;
+float Ts = 0.02;
 float N = 2;
 float uMin = -1;
 float uMax = +1;
@@ -817,8 +817,8 @@ void setup() {
   driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
   driverPosition.threshold = 0.01; //1rps
   driverPosition.useSecondCurveBelowThreshold = true;
-  //driverSpeed.primaryOffsetPos = 0.2; //was 0.3
-  //driverSpeed.primaryOffsetNeg = -0.2; //was -0.3
+  driverSpeed.primaryOffsetPos = 0.4; //was 0.3
+  driverSpeed.primaryOffsetNeg = -0.4; //was -0.3
   
   driverSpeed.addSecondCurve(plantForSpeed2, driveForSpeed2, sizeSpeed2);
   driverSpeed.threshold = 1.0; //1rps
