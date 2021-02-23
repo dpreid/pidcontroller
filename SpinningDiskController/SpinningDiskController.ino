@@ -44,7 +44,7 @@ bool development = true;
 
 const int offset = 1; // If motor spins in the opposite direction then you can change this to -1.
 
-MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset, 240000); //240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
+MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset, 48000); //240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
 
 /******* Drive signals ********/
@@ -57,15 +57,17 @@ Driver driverMotor = Driver(plantForMotor, driveForMotor, sizeMotor);
 
 
 // POSITION
-static float plantForPosition[] = {-0.5,+0.5}; // max error is when half a revolution away
+static float plantForPosition[] = {-2,+2}; // was: max error is when half a revolution away
 static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
 
 float dp = 1e-3;
-float pf = 0.1;
+float pf = 0.38;
+float dr = 0.05;
+float dl = 0.0;
 static float plantForPosition2[] = {-0.5,   -dp, 0, dp,   0.5}; 
-static float driveForPosition2[] = {-pf,        -pf, 0, pf, pf}; 
+static float driveForPosition2[] = {-(pf+dl),        -(pf+dl), 0, pf+dr, pf+dr}; 
 static int sizePosition2 = 5;
 
 
@@ -114,6 +116,8 @@ RotaryPlant disk = RotaryPlant(encoderPPR, LPFCoefficient, timeToSeconds);
 const float positionLimit = 2 * encoderPPR; // using both edges on A & B lines for position
 const float encoderMin = positionLimit * -1; // negative limit
 const float encoderMax = positionLimit -1;   // assign zero to position half of the rotation, so subtract one
+const float positionPlantMin  = -5;
+const float positionPlantMax = 5;
 
 volatile float speed_angular_velocity = 0; //for speed mode velocity reporting
 unsigned long speed_current_time_encoder = 0;
@@ -126,6 +130,8 @@ const float speedEpsilon = positionEpsilon; //used to check if command is close 
 // flags for ISR to trigger heavy-weight tasks to run in main loop
 volatile bool doReport = false;
 volatile bool doPID = false;
+// flags for ISR to action
+volatile bool requestZeroPosition; 
 
 
 /******** PID CONTROL ********/
@@ -135,7 +141,7 @@ float Kp = 1.0;
 float Ki = 0.0;
 float Kd = 0.0;
 float Ts = 0.005;
-float N = 20;
+float N = 2;
 float uMin = -1;
 float uMax = +1;
 
@@ -394,7 +400,7 @@ void stateStoppingDuring(void) {
   motor.brake(); //This is just free-wheeling, so needs no further commands.
 
   awaitingStopP1 = awaitingStopP0;
-  awaitingStopP0 = disk.getPosition();
+  awaitingStopP0 = disk.getDisplacement();
 
   if (cmpf(awaitingStopP0, awaitingStopP1, positionEpsilon)) {
     awaitingStopCount -= 1;
@@ -540,7 +546,7 @@ void stateSpeedDuring(void) {
     
 	y = controller.update(v);
 
-	yp = driverSpeed.drive(-y,v);
+	yp = driverSpeed.drive(y,v);
 	
 	motor.drive(yp);
 
@@ -624,15 +630,35 @@ void stateSpeedAfter(void) {
 
 void statePositionBefore(void) {
 
-  state = STATE_POSITION_DURING;
+  state = STATE_POSITION_BEFORE;
 
   lastCommandMillis = millis();
+
+  float p = disk.getDisplacement();
+
+  if ( abs(p) <= positionEpsilon) {
+
+	requestZeroPosition = false;
+
+	controller.setLimits(positionPlantMin, positionPlantMax);
+
+	positionChangeCommand = 0;
+	controller.setCommand(positionChangeCommand);
+
+	report_integer = reportPosition;
+
+	state = STATE_POSITION_DURING;
+	
+	if (debug) Serial.println("Disk zeroed");
+	
+  } else {
+
+	requestZeroPosition = true;
+
+	if (debug) Serial.println("Disk not zeroed");
   
-  positionChangeCommand = disk.getPosition();
-  controller.setLimits(positionCommandMin, positionCommandMax);
-  controller.setCommand(positionChangeCommand);
-  report_integer = reportPosition;
-  
+  }
+
 }
 
 
@@ -646,12 +672,17 @@ void statePositionDuring(void) {
   if (doPID) {
 
     c = controller.getCommand();
-	p = disk.getPosition();
+	p = disk.getDisplacement();
     v = disk.getVelocity();
 
+
+	if ( p < positionPlantMin || p > positionPlantMax ) {
+	  state = STATE_POSITION_AFTER;
+	} 
+	
 	y = controller.update(p);
 
-	yp = driverPosition.drive(-y,v);
+	yp = driverPosition.drive(y,v);
 	
 	motor.drive(yp);
 
@@ -661,17 +692,19 @@ void statePositionDuring(void) {
     //report();
 	if (debug) {
 	  Serial.print("c=");
-	  Serial.print(controller.getCommand());
+	  Serial.print(positionToExternalUnits(controller.getCommand()));
+	  Serial.print(", enc=");
+	  Serial.print(encoder.read());
 	  Serial.print(", p=");
-	  Serial.print(p);	  
+	  Serial.print(positionToExternalUnits(p));	  
 	  Serial.print(", v=");
-	  Serial.print(v);
+	  Serial.print(velocityToExternalUnits(v));
 	  Serial.print(", err=");
-	  Serial.print(c-v);
+	  Serial.print(positionToExternalUnits(c-p));
 	  Serial.print(", y=");	  
-	  Serial.print(y);
+	  Serial.print(positionToExternalUnits(y));
 	  Serial.print(", e0=");	  
-	  Serial.print(controller.getError());	  
+	  Serial.print(positionToExternalUnits(controller.getError()));	  
 	  Serial.print(", *yp=");
 	  Serial.print(yp);
 	  Serial.print(", Kp=");
@@ -684,9 +717,10 @@ void statePositionDuring(void) {
 	  Serial.print(controller.getTs());
 	  Serial.print(", N=");
 	  Serial.println(controller.getN());	  
+	} else  {
+	  report();
 	}
-	
-    doReport = false; //clear flag so can run again later
+	doReport = false; //clear flag so can run again later
   }
 
   // Disk can sometimes oscillate, so shutdown on timeout.
@@ -754,6 +788,10 @@ void SMRun(void)
 //This function is run on a timer interrupt defined by PIDInterval/timer_interrupt_freq.
 void TimerInterrupt(void) {
 
+  if (requestZeroPosition) {
+	encoder.write(0);
+  }
+  
   disk.sample(encoder.read(),micros());
   
   doPID = true;
@@ -776,10 +814,11 @@ void setup() {
   driverMotor.threshold = 0.0; //don't use second curve
   driverMotor.useSecondCurveBelowThreshold = true;
 
-  //driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
-  //driverPosition.threshold = 0.1; //1rps
-  //driverPosition.useSecondCurveBelowThreshold = true;
-
+  driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
+  driverPosition.threshold = 0.01; //1rps
+  driverPosition.useSecondCurveBelowThreshold = true;
+  //driverSpeed.primaryOffsetPos = 0.2; //was 0.3
+  //driverSpeed.primaryOffsetNeg = -0.2; //was -0.3
   
   driverSpeed.addSecondCurve(plantForSpeed2, driveForSpeed2, sizeSpeed2);
   driverSpeed.threshold = 1.0; //1rps
@@ -1130,7 +1169,7 @@ void report(void)
   Serial.print("{\"t\":");
   Serial.print(millis());
   Serial.print(",\"p\":");
-  Serial.print(positionToExternalUnits(disk.getPosition()));
+  Serial.print(positionToExternalUnits(disk.getDisplacement()));
   Serial.print(",\"v\":");
   Serial.print(velocityToExternalUnits(disk.getVelocity()));
   

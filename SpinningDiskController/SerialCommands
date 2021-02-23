@@ -68,23 +68,37 @@
 
 {"set":"parameters","kp":0.1} 
 
-
+{"set":"mode","to":"speedPid"}
+{"set":"speed","to":40}
+{"set":"mode","to":"stop"}
 {"set":"mode","to":"positionPid"}
 {"set":"parameters","kp":1}
+{"set":"parameters","kp":1.5}
+{"set":"parameters","kp":2}
 {"set":"parameters","kp":3}
 {"set":"parameters","kp":4}
+{"set":"parameters","kp":5}
+{"set":"parameters","kp":10}
+{"set":"parameters","kp":20}
+
 {"set":"position","to":0}
 {"set":"position","to":1.0}
-
+{"set":"parameters","kp":6}
+{"set":"parameters","kp":7}
 {"set":"parameters","kp":0.5}
-{"set":"position","to":3.0}
+{"set":"position","to":3.14}
 {"set":"position","to":2.0}
 {"set":"position","to":1.0}
 {"set":"position","to":0}
 {"set":"position","to":-1.0}
 {"set":"position","to":-2.0}
 {"set":"position","to":-2.5}
-{"set":"position","to":-3.0}
+{"set":"position","to":-3.14}
+{"set":"parameters","kp":0.1}
+{"set":"parameters","kp":0.2}
+{"set":"parameters","kp":0.3}
+{"set":"parameters","kp":0.4}
+{"set":"parameters","kp":1.1}
 
 
 {"set":"position","to":50}
@@ -97,6 +111,8 @@
 {"set":"position","to":2.0}
 {"set":"position","to":-3.14}
 {"set":"position","to":0}
+
+
 
 
 {"set":"show","to":"none"}
