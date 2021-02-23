@@ -140,7 +140,7 @@ volatile bool requestZeroPosition;
 float Kp = 1.0;
 float Ki = 0.0;
 float Kd = 0.0;
-float Ts = 0.02;
+float Ts = 0.005;
 float N = 2;
 float uMin = -1;
 float uMax = +1;
@@ -817,8 +817,8 @@ void setup() {
   driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
   driverPosition.threshold = 0.01; //1rps
   driverPosition.useSecondCurveBelowThreshold = true;
-  driverSpeed.primaryOffsetPos = 0.4; //was 0.3
-  driverSpeed.primaryOffsetNeg = -0.4; //was -0.3
+  //driverSpeed.primaryOffsetPos = 0.5; //was 0.3
+  //driverSpeed.primaryOffsetNeg = -0.5; //was -0.3
   
   driverSpeed.addSecondCurve(plantForSpeed2, driveForSpeed2, sizeSpeed2);
   driverSpeed.threshold = 1.0; //1rps
