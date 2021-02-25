@@ -1,6 +1,7 @@
 {"set":"mode","to":"stop"}
 
-{"set":"speed","to":100}	
+{"set":"speed","to":100}
+
 {"set":"speed","to":50}		//speed parameter in rpm (max 1000) for PID_SPEED and 0-100% for DC_Motor
 {"set":"speed","to":40}
 {"set":"speed","to":30}

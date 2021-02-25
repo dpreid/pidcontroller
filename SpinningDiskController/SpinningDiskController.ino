@@ -86,17 +86,19 @@ float positionPrimaryOffsetNeg = -0.48;  //set in setup()
 
 
 // SPEED
-float speedMaxRPS = 40; // we can probably get to ~2500 rpm if we risk the bearings
+float speedMaxRPS = 4; // we can probably get to ~2500 rpm if we risk the bearings
 static float plantForSpeed[] = {-speedMaxRPS,speedMaxRPS}; //+/- 100% in the app
 static float driveForSpeed[] = {-1,1}; // max 50% drive
 static int sizeSpeed = 2;
 Driver driverSpeed = Driver(plantForSpeed, driveForSpeed, sizeSpeed);
+float speedPrimaryOffsetPos = 0.3; //set in setup()
+float speedPrimaryOffsetNeg = -0.3;  //set in setup()
 
-float ds = 1e-3;
-float sf = 0.38;
-static float plantForSpeed2[] = {-speedMaxRPS,   -ds, 0, ds,   speedMaxRPS}; 
-static float driveForSpeed2[] = {-sf,        -sf, 0, sf, sf}; 
-static int sizeSpeed2 = 5;
+//float ds = 1e-3;
+//float sf = 0.38;
+//static float plantForSpeed2[] = {-speedMaxRPS,   -ds, 0, ds,   speedMaxRPS}; 
+//static float driveForSpeed2[] = {-sf,        -sf, 0, sf, sf}; 
+//static int sizeSpeed2 = 5;
 
 // these are not used just now .....
 bool enableFrictionComp = true;
@@ -838,15 +840,16 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(encoderPinB), counterB, CHANGE);
   
   driverMotor.threshold = 0.0; //don't use second curve
+  
+  driverPosition.threshold = 0.0; //don't use second curve
   driverPosition.primaryOffsetPos = positionPrimaryOffsetPos; 
   driverPosition.primaryOffsetNeg = positionPrimaryOffsetNeg; 
   driverPosition.primaryOffsetThreshold = 0; //rps
   
-  driverSpeed.addSecondCurve(plantForSpeed2, driveForSpeed2, sizeSpeed2);
-  driverSpeed.threshold = 1.0; //1rps
-  driverSpeed.useSecondCurveBelowThreshold = true;
-  driverSpeed.primaryOffsetPos = 0.3;
-  driverSpeed.primaryOffsetNeg = -0.3;
+  driverSpeed.threshold = 0.0; //don't use second curve
+  driverSpeed.primaryOffsetPos = speedPrimaryOffsetPos;
+  driverSpeed.primaryOffsetNeg = speedPrimaryOffsetPos;
+  driverSpeed.primaryOffsetThreshold = 0;
   
   lastCommandMillis = millis();
 
