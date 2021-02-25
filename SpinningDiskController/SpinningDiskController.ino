@@ -35,6 +35,12 @@ bool development = true;
 // string manipulation is using over 50% of the programme space, so focus on removing them
 
 
+/*** encoder check pin ****/
+
+#define CANARY 7
+#define FAKEPIN 4
+bool toggle = false;
+
 /******** DC MOTOR ******/
 
 
@@ -44,7 +50,7 @@ bool development = true;
 
 const int offset = 1; // If motor spins in the opposite direction then you can change this to -1.
 
-MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset, 96000); //96000 for 500Hz, 120000 for 400Hz, 240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
+MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset,96000); //96000 for 500Hz, 120000 for 400Hz, 240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
 
 /******* Drive signals ********/
@@ -58,13 +64,15 @@ Driver driverMotor = Driver(plantForMotor, driveForMotor, sizeMotor);
 
 // POSITION
 static float plantForPosition[] = {-2,+2}; // was: max error is when half a revolution away
-static float driveForPosition[] = {-0.5,0.5}; // max 50% drive
+static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
+float positionPrimaryOffsetPos = 0.0; //set in setup()
+float positionPrimaryOffsetNeg = -0.0;  //set in setup()
 
 float dp = 1e-3;
-float pf = 0.38;
-float dr = 0.05;
+float pf = 0.0;
+float dr = 0.0;
 float dl = 0.0;
 static float plantForPosition2[] = {-0.5,   -dp, 0, dp,   0.5}; 
 static float driveForPosition2[] = {-(pf+dl),        -(pf+dl), 0, pf+dr, pf+dr}; 
@@ -105,7 +113,7 @@ float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 #define encoderPinB 2
 #define indexPin 11
 
-Encoder encoder(encoderPinA, encoderPinB);
+Encoder encoder(FAKEPIN, encoderPinB);
 const float encoderPPR = 2000;
 const float LPFCoefficient = 0.8;
 const float timeToSeconds = 1e-6;
@@ -148,11 +156,11 @@ float uMax = +1;
 PID controller = PID(Kp,Ki,Kd,Ts,N,uMin,uMax);
 
 const float KpMin = 0;
-const float KpMax = 999;
+const float KpMax = 999999999999;
 const float KiMin = 0;
-const float KiMax = 999;
+const float KiMax = 999999999999;
 const float KdMin = 0;
-const float KdMax = 999;
+const float KdMax = 999999999999;
 const float TsMin = 0.005; //5 milliseconds
 const float TsMax = 0.5; //500 milliseconds
 
@@ -805,20 +813,33 @@ void TimerInterrupt(void) {
 }
 
 
+void canary(void) {
+  toggle = !toggle;
+  digitalWrite(CANARY,toggle);
+}
+
 //===================================================================================
 //====================== SETUP AND LOOP =============================================
 //===================================================================================
 
 void setup() {
 
+  // canary
+  pinMode(CANARY, OUTPUT);
+  pinMode(encoderPinA, INPUT);
+  attachInterrupt(digitalPinToInterrupt(encoderPinA), canary, CHANGE);
+
+  // normal code
+  
   driverMotor.threshold = 0.0; //don't use second curve
   driverMotor.useSecondCurveBelowThreshold = true;
 
   driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
   driverPosition.threshold = 0.01; //1rps
   driverPosition.useSecondCurveBelowThreshold = true;
-  driverPosition.primaryOffsetPos = 0.3; //was 0.3
-  driverPosition.primaryOffsetNeg = -0.3; //was -0.3
+  driverPosition.primaryOffsetPos = positionPrimaryOffsetPos; 
+  driverPosition.primaryOffsetNeg = positionPrimaryOffsetNeg; 
+  driverPosition.primaryOffsetThreshold = 0; //rps
   
   driverSpeed.addSecondCurve(plantForSpeed2, driveForSpeed2, sizeSpeed2);
   driverSpeed.threshold = 1.0; //1rps
