@@ -32,14 +32,28 @@ bool development = true;
 #include <pid.h>
 #include <rotaryPlant.h>
 
-// string manipulation is using over 50% of the programme space, so focus on removing them
+/******** PID CONTROL ********/
 
+//PID parameters
+float Kp = 1.0;
+float Ki = 0.0;
+float Kd = 0.0;
+float Ts = 0.005;
+float N = 2;
+float uMin = -1;
+float uMax = +1;
 
-/*** encoder check pin ****/
+PID controller = PID(Kp,Ki,Kd,Ts,N,uMin,uMax);
 
-#define CANARY 7
-#define FAKEPIN 4
-bool toggle = false;
+const float KpMin = 0;
+const float KpMax = 999999;
+const float KiMin = 0;
+const float KiMax = 999999;
+const float KdMin = 0;
+const float KdMax = 999999;
+const float TsMin = 0.005; //5 milliseconds
+const float TsMax = 0.5; //500 milliseconds
+
 
 /******** DC MOTOR ******/
 
@@ -48,9 +62,9 @@ bool toggle = false;
 #define AIN1 5
 #define PWMA 6
 
-const int offset = 1; // If motor spins in the opposite direction then you can change this to -1.
+const int direction = 1; // If motor spins in the opposite direction then you can change this to -1.
 
-MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, offset,96000); //96000 for 500Hz, 120000 for 400Hz, 240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
+MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, direction, 2400); //96000 for 500Hz, 120000 for 400Hz, 240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
 
 /******* Drive signals ********/
@@ -63,20 +77,12 @@ Driver driverMotor = Driver(plantForMotor, driveForMotor, sizeMotor);
 
 
 // POSITION
-static float plantForPosition[] = {-2,+2}; // was: max error is when half a revolution away
+static float plantForPosition[] = {-1,+1}; // was: max error is when half a revolution away
 static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
-float positionPrimaryOffsetPos = 0.0; //set in setup()
-float positionPrimaryOffsetNeg = -0.0;  //set in setup()
-
-float dp = 1e-3;
-float pf = 0.0;
-float dr = 0.0;
-float dl = 0.0;
-static float plantForPosition2[] = {-0.5,   -dp, 0, dp,   0.5}; 
-static float driveForPosition2[] = {-(pf+dl),        -(pf+dl), 0, pf+dr, pf+dr}; 
-static int sizePosition2 = 5;
+float positionPrimaryOffsetPos = 0.48; //set in setup()
+float positionPrimaryOffsetNeg = -0.48;  //set in setup()
 
 
 // SPEED
@@ -113,13 +119,10 @@ float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 #define encoderPinB 2
 #define indexPin 11
 
-Encoder encoder(FAKEPIN, encoderPinB);
 const float encoderPPR = 2000;
 const float LPFCoefficient = 0.8;
-const float timeToSeconds = 1e-6;
 
-RotaryPlant disk = RotaryPlant(encoderPPR, LPFCoefficient, timeToSeconds);
-
+RotaryPlant disk = RotaryPlant(encoderPPR, LPFCoefficient, Ts);
 
 const float positionLimit = 2 * encoderPPR; // using both edges on A & B lines for position
 const float encoderMin = positionLimit * -1; // negative limit
@@ -138,31 +141,10 @@ const float speedEpsilon = positionEpsilon; //used to check if command is close 
 // flags for ISR to trigger heavy-weight tasks to run in main loop
 volatile bool doReport = false;
 volatile bool doPID = false;
+volatile bool updated = false;
 // flags for ISR to action
 volatile bool requestZeroPosition; 
 
-
-/******** PID CONTROL ********/
-
-//PID parameters
-float Kp = 1.0;
-float Ki = 0.0;
-float Kd = 0.0;
-float Ts = 0.005;
-float N = 2;
-float uMin = -1;
-float uMax = +1;
-
-PID controller = PID(Kp,Ki,Kd,Ts,N,uMin,uMax);
-
-const float KpMin = 0;
-const float KpMax = 999999999999;
-const float KiMin = 0;
-const float KiMax = 999999999999;
-const float KdMin = 0;
-const float KdMax = 999999999999;
-const float TsMin = 0.005; //5 milliseconds
-const float TsMax = 0.5; //500 milliseconds
 
 float PIDInterval = Ts * 1000;  //ms, for timer interrupt
 
@@ -196,6 +178,13 @@ int report_integer = 1;          //an integer multiple of the PIDInterval for re
 int report_count = 0;
 
 /******** OTHER GLOBAL VARIABLES ********/
+volatile long pulse = 0;
+volatile long count = 0; //count
+volatile long lastCount = 0;//
+long offset = 0; //
+
+bool initialiseDisk;
+
 int loop_count = 0; //check if needed?
 unsigned long dta; // moving average, needs right shifting by 3 bits to get correct value
 
@@ -663,7 +652,10 @@ void statePositionBefore(void) {
 
 	requestZeroPosition = true;
 
-	if (debug) Serial.println("Disk not zeroed");
+	if (debug) {
+	  Serial.print("Disk not zeroed, p = ");
+	  Serial.println(p);
+	}
   
   }
 
@@ -702,7 +694,7 @@ void statePositionDuring(void) {
 	  Serial.print("c=");
 	  Serial.print(positionToExternalUnits(controller.getCommand()));
 	  Serial.print(", enc=");
-	  Serial.print(encoder.read());
+	  Serial.print(count);
 	  Serial.print(", p=");
 	  Serial.print(positionToExternalUnits(p));	  
 	  Serial.print(", v=");
@@ -794,7 +786,7 @@ void SMRun(void)
 }
 
 //This function is run on a timer interrupt defined by PIDInterval/timer_interrupt_freq.
-void TimerInterrupt(void) {
+/*void TimerInterrupt(void) {
 
   if (requestZeroPosition) {
 	encoder.write(0);
@@ -811,32 +803,41 @@ void TimerInterrupt(void) {
   }
 
 }
-
-
-void canary(void) {
-  toggle = !toggle;
-  digitalWrite(CANARY,toggle);
+*/
+//This function is run on a timer interrupt defined by PIDInterval/timer_interrupt_freq.
+void TimerInterrupt(void) {
+  lastCount = count;
+  count = pulse;
+  updated = true;
 }
 
+void counterA(void) {
+
+  bool A = (PORT->Group[g_APinDescription[encoderPinA].ulPort].IN.reg & (1ul << g_APinDescription[encoderPinA].ulPin)) != 0 ;
+  bool B = (PORT->Group[g_APinDescription[encoderPinB].ulPort].IN.reg & (1ul << g_APinDescription[encoderPinB].ulPin)) != 0 ;
+
+  pulse += (A==B ? +1 : - 1);
+}
+void counterB(void) {
+
+  bool A = (PORT->Group[g_APinDescription[encoderPinA].ulPort].IN.reg & (1ul << g_APinDescription[encoderPinA].ulPin)) != 0 ;
+  bool B = (PORT->Group[g_APinDescription[encoderPinB].ulPort].IN.reg & (1ul << g_APinDescription[encoderPinB].ulPin)) != 0 ;
+
+  pulse += (A!=B ? +1 : - 1);
+
+}
 //===================================================================================
 //====================== SETUP AND LOOP =============================================
 //===================================================================================
 
 void setup() {
 
-  // canary
-  pinMode(CANARY, OUTPUT);
-  pinMode(encoderPinA, INPUT);
-  attachInterrupt(digitalPinToInterrupt(encoderPinA), canary, CHANGE);
+  // encoder
 
-  // normal code
+  attachInterrupt(digitalPinToInterrupt(encoderPinA), counterA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB), counterB, CHANGE);
   
   driverMotor.threshold = 0.0; //don't use second curve
-  driverMotor.useSecondCurveBelowThreshold = true;
-
-  driverPosition.addSecondCurve(plantForPosition2, driveForPosition2, sizePosition2);
-  driverPosition.threshold = 0.01; //1rps
-  driverPosition.useSecondCurveBelowThreshold = true;
   driverPosition.primaryOffsetPos = positionPrimaryOffsetPos; 
   driverPosition.primaryOffsetNeg = positionPrimaryOffsetNeg; 
   driverPosition.primaryOffsetThreshold = 0; //rps
@@ -851,9 +852,8 @@ void setup() {
 
   Serial.setTimeout(50);
   Serial.begin(57600);
-
-  disk.initialise(encoder.read(), micros());
-
+  initialiseDisk = true;
+  requestZeroPosition = false;
   startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
   while (! Serial);
@@ -861,6 +861,28 @@ void setup() {
 
 void loop() {
 
+    if (updated) {
+	  
+	if (requestZeroPosition) {
+	 offset = count;
+	 initialiseDisk = true;
+	}
+
+	// must ensure initialisation and first step
+	// are timestepSeconds part, so initialise on first time period
+	// sample on second and subsequent
+	if (initialiseDisk) {
+	  disk.initialise(count); 
+	  initialiseDisk = false;
+	} else {	
+	  disk.sample(count-offset);
+	}
+	
+	//tell statemachine to do PID, report if needed
+	doPID = true; 
+	doReport = true;
+  }
+  
   // update state machine (which will also run tasks flagged by interrupts)
   SMRun();
 
