@@ -39,20 +39,20 @@ float Kp = 1.0;
 float Ki = 0.0;
 float Kd = 0.0;
 float Ts = 0.005;
-float N = 2;
+float N = 20;
 float uMin = -1;
 float uMax = +1;
 
 PID controller = PID(Kp,Ki,Kd,Ts,N,uMin,uMax);
 
 const float KpMin = 0;
-const float KpMax = 999999;
+const float KpMax = 99;
 const float KiMin = 0;
-const float KiMax = 999999;
+const float KiMax = 99;
 const float KdMin = 0;
-const float KdMax = 999999;
-const float TsMin = 0.005; //5 milliseconds
-const float TsMax = 0.5; //500 milliseconds
+const float KdMax = 99;
+const float TsMin = 0.002; //2 milliseconds
+const float TsMax = 0.100; //100 milliseconds
 
 
 /******** DC MOTOR ******/
@@ -64,7 +64,8 @@ const float TsMax = 0.5; //500 milliseconds
 
 const int direction = 1; // If motor spins in the opposite direction then you can change this to -1.
 
-MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, direction, 2400); //96000 for 500Hz, 120000 for 400Hz, 240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
+MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, direction, 2400); // 20 kHz
+//96000 for 500Hz, 120000 for 400Hz, 240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
 
 /******* Drive signals ********/
@@ -86,6 +87,8 @@ float positionPrimaryOffsetNeg = -0.48;  //set in setup()
 
 
 // SPEED
+float speedLimit = 8; //give a buffer so we can PID up to speedMaxRPS, plus so we can reason separately about
+                      // error-to-drive mapping, and safe operating limits.
 float speedMaxRPS = 4; // we can probably get to ~2500 rpm if we risk the bearings
 static float plantForSpeed[] = {-speedMaxRPS,speedMaxRPS}; //+/- 100% in the app
 static float driveForSpeed[] = {-1,1}; // max 50% drive
@@ -94,24 +97,10 @@ Driver driverSpeed = Driver(plantForSpeed, driveForSpeed, sizeSpeed);
 float speedPrimaryOffsetPos = 0.3; //set in setup()
 float speedPrimaryOffsetNeg = -0.3;  //set in setup()
 
-//float ds = 1e-3;
-//float sf = 0.38;
-//static float plantForSpeed2[] = {-speedMaxRPS,   -ds, 0, ds,   speedMaxRPS}; 
-//static float driveForSpeed2[] = {-sf,        -sf, 0, sf, sf}; 
-//static int sizeSpeed2 = 5;
-
-// these are not used just now .....
-bool enableFrictionComp = true;
-float frictionCompStaticCW = (1.8/12.0)*255; //was 1.8
-float frictionCompStaticCCW = (1.7/12.0)*255;  //was 1.7
-float frictionCompWindow = 5.0;
-float frictionCompDynamicCW = (1.0/12.0)*255; //was 1.0
-float frictionCompDynamicCCW = (0.9/12.0)*255; //was 0.9
 
 // Timer - to switch off motor at end of a run
-
 float lastCommandMillis = 0;
-float longestShutdownTimeMillis = 300 * 1000;
+float longestShutdownTimeMillis = 180 * 1000;
 float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 
 
@@ -122,15 +111,18 @@ float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 #define indexPin 11
 
 const float encoderPPR = 2000;
-const float LPFCoefficient = 0.8;
+const float LPFCoefficient = 0.1;
 
 RotaryPlant disk = RotaryPlant(encoderPPR, LPFCoefficient, Ts);
 
 const float positionLimit = 2 * encoderPPR; // using both edges on A & B lines for position
 const float encoderMin = positionLimit * -1; // negative limit
 const float encoderMax = positionLimit -1;   // assign zero to position half of the rotation, so subtract one
-const float positionPlantMin  = -5;
+const float positionPlantMin  = -5; // limits for controller 
 const float positionPlantMax = 5;
+const float positionLimitMin  = -2; // limits for state to enforce
+const float positionLimitMax = 2;
+
 
 volatile float speed_angular_velocity = 0; //for speed mode velocity reporting
 unsigned long speed_current_time_encoder = 0;
@@ -190,6 +182,10 @@ bool initialiseDisk;
 int loop_count = 0; //check if needed?
 unsigned long dta; // moving average, needs right shifting by 3 bits to get correct value
 
+bool writing = false; //semaphore for coordinating writes to serial port
+int apiVersion = 0; //legacy version
+long reportCount = 0; //for legacy report frequency
+
 // SM Awaiting Stop
 int awaitingStopP0 = 0;
 int awaitingStopP1 = 0;
@@ -201,10 +197,12 @@ float newKp = 1.0;
 float newKi = 0.0;
 float newKd = 0.0;
 float newTs = 10;
+float newN = 2;
 bool isNewKp = false;
 bool isNewKi = false;
 bool isNewKd = false;
 bool isNewTs = false;
+bool isNewN = false;
 
 // SMStateChangeDCMotor
 float motorMaxCommand = 100.0; //external world units are 0 to +/-100%
@@ -213,8 +211,8 @@ float motorCommand = 0;
 
 // SMStateChangePIDPosition
 float positionChangeCommand = 0;
-float positionCommandMin = -0.5;
-float positionCommandMax = +0.5;
+float positionCommandMin = -2;  //wider range, to permit ramping
+float positionCommandMax = +2;
  
 
 // SMStateChangePIDSpeed
@@ -260,6 +258,9 @@ void maybeCalculatePID(void);
 void maybeReport(void);
 void startTimer(int frequencyHz);
 void setTimerFrequencyHz(int frequencyHz);
+void requestSerial(void);
+void releaseSerial(void);
+
 
 /**
  * Defines the valid states for the state machine
@@ -388,7 +389,7 @@ void stateStoppingBefore(void) {
 
   state = STATE_STOPPING_DURING;
 
-  // empty state
+  // deliberately empty state
 
 }
 
@@ -425,7 +426,7 @@ void stateStoppingAfter(void) {
 
   state = STATE_STOPPED;
 
-  // empty state
+  // deliberately empty state
 
 }
 
@@ -466,6 +467,7 @@ void stateMotorDuring(void) {
   }
 
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
+	Serial.println("{\"wrn\":\"maximum run time exceeded\"}");
     state = STATE_MOTOR_AFTER;
   }
 
@@ -499,7 +501,7 @@ void stateMotorChangeParameters(void) {
 
   lastCommandMillis = millis();
   
-  // empty state
+  // deliberately empty state
   
 }
 
@@ -581,9 +583,15 @@ void stateSpeedDuring(void) {
     doReport = false; //clear flag so can run again later
   }
 
+  if (abs(v) > speedLimit) {
+	state = STATE_POSITION_AFTER;
+	Serial.println("{\"err\":\"position limit exceeded\"}");
+  }
+  
   // It's ok to wait in a state a long time if we are NOT using the motor
   if (!cmpf(controller.getCommand(),0, speedEpsilon)) {
     if (millis() >= lastCommandMillis + shutdownTimeMillis) {
+	  Serial.println("{\"wrn\":\"maximum run time exceeded\"}");
       state = STATE_SPEED_AFTER;
     }
   }
@@ -595,12 +603,12 @@ void stateSpeedChangeCommand(void) {
 
   if (abs(speedChangeCommand) <= speedCommandMax) {
 	controller.setCommand(speedChangeCommand);
-	if (debug) {
-	  Serial.print("new speed command=");
-	  Serial.println(controller.getCommand());
-	}
+	Serial.print("{\"inf\":\"new velocity command\",\"c\":\"");
+	Serial.print(velocityToExternalUnits(controller.getCommand()));
+	Serial.print("\"}"); 
+  } else {
+	Serial.println("{\"err\":\"cannot command speed outside range\"}");
   }
-
 }
 
 
@@ -620,7 +628,7 @@ void stateSpeedAfter(void) {
 
   state = STATE_STOPPING_BEFORE;
   
-  // empty state
+  // deliberately empty state
 			 
 
 }
@@ -709,24 +717,21 @@ void statePositionDuring(void) {
 	  Serial.print(positionToExternalUnits(controller.getError()));	  
 	  Serial.print(", *yp=");
 	  Serial.print(yp);
-	  Serial.print(", Kp=");
-	  Serial.print(controller.getKp());
-	  Serial.print(", Ki=");
-	  Serial.print(controller.getKi());	  
-	  Serial.print(", Kd=");
-	  Serial.print(controller.getKd());
-	  Serial.print(", Ts=");
-	  Serial.print(controller.getTs());
-	  Serial.print(", N=");
-	  Serial.println(controller.getN());	  
+	  
 	} else  {
 	  report();
 	}
 	doReport = false; //clear flag so can run again later
   }
 
+  // Disk can go unstable, and oscillate over a large amplitude - prevent!
+  if (p > positionLimitMax || p < positionLimitMin ) {
+	state = STATE_POSITION_AFTER;
+	Serial.println("{\"err\":\"position limit exceeded\"}");
+  }
   // Disk can sometimes oscillate, so shutdown on timeout.
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
+	Serial.println("{\"inf\":\"maximum run time exceeded\"}");
     state = STATE_POSITION_AFTER;
   }
 
@@ -742,9 +747,11 @@ void statePositionChangeCommand(void) {
   if(positionChangeCommand >= positionCommandMin && positionChangeCommand <= positionCommandMax) {
 
     controller.setCommand(positionChangeCommand);
-
+	Serial.print("{\"inf\":\"new position command\",\"c\":\"");
+	Serial.print(positionToExternalUnits(controller.getCommand()));
+	Serial.print("\"}"); 
   } else {
-    Serial.println("{\"err\":\"position setpoint outside range\"}");
+    Serial.println("{\"err\":\"cannot command position outside range\"}");
   }
 }
 
@@ -847,7 +854,9 @@ void setup() {
 void loop() {
 
     if (updated) {
-	  
+	
+	updated = false;
+	
 	if (requestZeroPosition) {
 	 offset = count;
 	 initialiseDisk = true;
@@ -867,6 +876,7 @@ void loop() {
 	//tell statemachine to do PID, report if needed
 	doPID = true; 
 	doReport = true;
+
   }
   
   // update state machine (which will also run tasks flagged by interrupts)
@@ -941,6 +951,19 @@ void changePIDCoefficients(void) {
     isNewTs = false;
   }
 
+  Serial.print("{\"inf\":\"new PID parameters\"");
+  Serial.print(",\"Kp\":");
+  Serial.print(controller.getKp());
+  Serial.print(",\"Ki\":");
+  Serial.print(controller.getKi());
+  Serial.print(",\"Kd\":");
+  Serial.print(controller.getKd());  
+  Serial.print(",\"Ts\":");
+  Serial.print(controller.getTs());
+  Serial.print(",\"N\":");
+  Serial.print(controller.getN());
+  Serial.println("}");
+  
   // pid controller automatically resets its history
   // when parameters are changed
 
@@ -1035,7 +1058,10 @@ StateType readSerialJSON(StateType state) {
 
     const char* set = doc["set"];
 
-    if(strcmp(set, "speed")==0) {
+	if(strcmp(set, "api")==0) {
+	  apiVersion = doc["to"];
+	}
+	else if(strcmp(set, "speed")==0) {
       if(state == STATE_SPEED_DURING) {
         state = STATE_SPEED_CHANGE_COMMAND;
         speedChangeCommand = velocityFromExternalUnits(doc["to"]);
@@ -1101,14 +1127,20 @@ StateType readSerialJSON(StateType state) {
         isNewKd = false;
       }
 
-      if(!doc["dt"].isNull()) {
-        newTs = secondsFromMillis(doc["dt"]);
+      if(!doc["ts"].isNull()) {
+        newTs = secondsFromMillis(doc["ts"]);
         isNewTs = true;
       } else {
         isNewTs = false;
       }
+      if(!doc["n"].isNull()) {
+        newN = secondsFromMillis(doc["n"]);
+        isNewN = true;
+      } else {
+        isNewN = false;
+      }	  
 
-      if (isNewKp || isNewKi || isNewKd || isNewTs) {
+      if (isNewKp || isNewKi || isNewKd || isNewTs || isNewN) {
         if ( state == STATE_POSITION_DURING) {
           state = STATE_POSITION_CHANGE_PARAMETERS;
         } else if (state == STATE_SPEED_DURING) {
@@ -1117,27 +1149,6 @@ StateType readSerialJSON(StateType state) {
           if (debug) Serial.println("{\"err\":\"in wrong state to set coefficients\"}");
         }
 
-      }
-
-      if (development) {
-        if (!doc["fcs_cw"].isNull()) {
-          frictionCompStaticCW = doc["fcs_cw"];
-        }
-        if (!doc["fcs_ccw"].isNull()) {
-          frictionCompStaticCCW = doc["fcs_ccw"];
-        }
-        if (!doc["fcd_cw"].isNull()) {
-          frictionCompDynamicCW = doc["fcd_cw"];
-        }
-        if (!doc["fcd_ccw"].isNull()) {
-          frictionCompDynamicCCW = doc["fcd_ccw"];
-        }
-        if (!doc["fcw"].isNull()) {
-          frictionCompWindow = doc["fcw"];
-        }
-        if (!doc["pre"].isNull()) {
-          motor.setPrescale(doc["pre"]);
-        }
       }
 
     }
@@ -1162,9 +1173,65 @@ StateType readSerialJSON(StateType state) {
       newShutdownTimer(doc["to"]);
     }
   }
+
+  const char* get = doc["get"];
+  if (strcmp(get, "api")==0) {
+
+	// return api
+
+  } else if (strcmp(get, "pid")==0){
+	//return pid parameters
+	requestSerial();
+	Serial.print("{\"inf\",\"pid\", \"kp\":");
+	Serial.print(controller.getKp());
+	Serial.print(",\"ki\":");
+	Serial.print(controller.getKi());	  
+	Serial.print(",\"kd\":");
+	Serial.print(controller.getKd());
+	Serial.print(",\"ts\":");
+	Serial.print(controller.getTs());
+	Serial.print(",\"n\":");
+	Serial.print(controller.getN());
+	Serial.println("}");
+	releaseSerial();
+ 
+  } else if (strcmp(get, "drive")==0) {
+
+	requestSerial();
+	Serial.print("{\"inf\",\"drive\", \"pon\":");
+	Serial.print(driverPosition.primaryOffsetNeg);
+	Serial.print(",\"pop\":");
+	Serial.print(driverPosition.primaryOffsetPos);	  
+	Serial.print(",\"von\":");
+	Serial.print(driverSpeed.primaryOffsetNeg);
+	Serial.print(",\"vop\":");
+	Serial.print(driverSpeed.primaryOffsetPos);
+	Serial.println("}");
+	releaseSerial();
+
+  }
+  else if (strcmp(get, "units")==0) {
+	requestSerial();
+	Serial.println("{\"inf\":\"units\",\"p\":\"rad\",\"v\":\"rad/s\",\"t\":\"s\"}");
+	releaseSerial();
+  }
+  else if (strcmp(get, "uptime")==0) {
+	//return seconds
+
+  }
+
+  
   return state;     //return whatever state it changed to or maintain the state.
 }
 
+void requestSerial(void){
+  while(writing); //wait for port to free up
+  writing = true;
+}
+
+void releaseSerial(void){
+  writing = false;
+}
 
 //===================================================================================
 //======================  REPORT ====================================================
@@ -1180,44 +1247,58 @@ void report(void)
     return; // do nothing
   }
 
-  if (show_mode == SHOW_FC) {
-    Serial.print(millis());
-    Serial.print(",");
-    Serial.print(frictionCompStaticCW);
-    Serial.print(",");
-    Serial.print(frictionCompStaticCCW);
-    Serial.print(",");
-    Serial.print(frictionCompDynamicCW);
-    Serial.print(",");
-    Serial.print(frictionCompDynamicCCW);
-    Serial.print(",");
-    Serial.println(frictionCompWindow);
-	return;
-  }
-  
-  Serial.print("{\"t\":");
-  Serial.print(millis());
-  Serial.print(",\"p\":");
-  Serial.print(positionToExternalUnits(disk.getDisplacement()));
-  Serial.print(",\"v\":");
-  Serial.print(velocityToExternalUnits(disk.getVelocity()));
-  
-  if (show_mode == SHOW_LONG) {
+  requestSerial();
 
-	if (state == STATE_POSITION_DURING) {
- 
-	  Serial.print(",\"c\":");
-	  Serial.print(positionToExternalUnits(controller.getCommand()));
+  if (apiVersion == 0) {
 
-	} else if (state == STATE_SPEED_DURING) {
+	reportCount ++;
+
+	if ( reportCount  == 4 ) { //only send data every 20ms
+
+	  reportCount = 0;
 	  
-	  Serial.print(",\"c\":");
-	  Serial.print(velocityToExternalUnits(controller.getCommand()));
+	  Serial.print("{\"enc\":");
+	  Serial.print(positionToExternalUnits(disk.getDisplacement()));
+	  Serial.print(",\"enc_ang_vel\":");
+	  Serial.print(velocityToExternalUnits(disk.getVelocity()));
+	  Serial.print(",\"time\":");
+	  Serial.print(millis()); 
+	  Serial.println("}");
 	}
+
+  } else if (apiVersion == 1) {
+
+	// TODO add ep, ei, ed errors
+	Serial.print("{\"t\":");
+	Serial.print(millis());
+	Serial.print(",\"p\":");
+	Serial.print(positionToExternalUnits(disk.getDisplacement()));
+	Serial.print(",\"v\":");
+	Serial.print(velocityToExternalUnits(disk.getVelocity()));
+	if (show_mode == SHOW_LONG) {
+
+	  if (state == STATE_POSITION_DURING) {
+		
+		Serial.print(",\"c\":");
+		Serial.print(positionToExternalUnits(controller.getCommand()));
+		
+	  } else if (state == STATE_SPEED_DURING) {
+		
+		Serial.print(",\"c\":");
+		Serial.print(velocityToExternalUnits(controller.getCommand()));
+	  }
+	}
+	
+  Serial.println("}");	
+  
+  } else {
+	Serial.print("{\"warn\":\"api not supported\",\"api\":");
+	Serial.print(apiVersion);
+	Serial.println("}");
   }
-  
-  Serial.println("}");
-  
+
+  releaseSerial();
+  doReport = false;
 }
 
  
