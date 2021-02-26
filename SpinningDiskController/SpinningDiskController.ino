@@ -87,16 +87,16 @@ float positionPrimaryOffsetPos = 0.48; //set in setup()
 float positionPrimaryOffsetNeg = -0.48;  //set in setup()
 
 
-// SPEED
-float speedLimit = 8; //give a buffer so we can PID up to speedMaxRPS, plus so we can reason separately about
+// VELOCITY
+float velocityLimit = 8; //give a buffer so we can PID up to velocityMaxRPS, plus so we can reason separately about
                       // error-to-drive mapping, and safe operating limits.
-float speedMaxRPS = 4; // we can probably get to ~2500 rpm if we risk the bearings
-static float plantForSpeed[] = {-speedMaxRPS,speedMaxRPS}; //+/- 100% in the app
-static float driveForSpeed[] = {-1,1}; // max 50% drive
-static int sizeSpeed = 2;
-Driver driverSpeed = Driver(plantForSpeed, driveForSpeed, sizeSpeed);
-float speedPrimaryOffsetPos = 0.3; //set in setup()
-float speedPrimaryOffsetNeg = -0.3;  //set in setup()
+float velocityMaxRPS = 4; // we can probably get to ~2500 rpm if we risk the bearings
+static float plantForVelocity[] = {-velocityMaxRPS,velocityMaxRPS}; //+/- 100% in the app
+static float driveForVelocity[] = {-1,1}; // max 50% drive
+static int sizeVelocity = 2;
+Driver driverVelocity = Driver(plantForVelocity, driveForVelocity, sizeVelocity);
+float velocityPrimaryOffsetPos = 0.3; //set in setup()
+float velocityPrimaryOffsetNeg = -0.3;  //set in setup()
 
 
 // Timer - to switch off motor at end of a run
@@ -125,12 +125,12 @@ const float positionLimitMin  = -2; // limits for state to enforce
 const float positionLimitMax = 2;
 
 
-volatile float speed_angular_velocity = 0; //for speed mode velocity reporting
-unsigned long speed_current_time_encoder = 0;
-unsigned long speed_previous_time_encoder = 0;
+volatile float velocity_angular_velocity = 0; //for velocity mode velocity reporting
+unsigned long velocity_current_time_encoder = 0;
+unsigned long velocity_previous_time_encoder = 0;
 
 const float positionEpsilon = 1.0f / (float)encoderPPR;
-const float speedEpsilon = positionEpsilon; //used to check if command is close to zero, value not critical.
+const float velocityEpsilon = positionEpsilon; //used to check if command is close to zero, value not critical.
 
 /****** INTERRUPTS *******/
 // flags for ISR to trigger heavy-weight tasks to run in main loop
@@ -167,9 +167,9 @@ char writeBuffer[REPORT_SIZE];
 
 volatile int show_mode = SHOW_LONG;
 
-int reportSpeed = 20;
+int reportVelocity = 20;
 int reportPosition = 4;
-int report_integer = 1;          //an integer multiple of the PIDInterval for reporting data set to 5 for speed modes, 1 for position mode.
+int report_integer = 1;          //an integer multiple of the PIDInterval for reporting data set to 5 for velocity modes, 1 for position mode.
 int report_count = 0;
 
 /******** OTHER GLOBAL VARIABLES ********/
@@ -217,14 +217,14 @@ float positionCommandMin = -2;  //wider range, to permit ramping
 float positionCommandMax = +2;
  
 
-// SMStateChangePIDSpeed
-float speedChangeCommand = 0;
-float speedCommandMin = -200; //rad/sec
-float speedCommandMax = +200; //rps
+// SMStateChangePIDVelocity
+float velocityChangeCommand = 0;
+float velocityCommandMin = -200; //rad/sec
+float velocityCommandMax = +200; //rps
 
-// TODO sort out normalisation of speed command based on defined plant maximum
+// TODO sort out normalisation of velocity command based on defined plant maximum
 // TODO consider linearising the drive to bring constant-gain regime down to slower
-// speeds which are less stressful on the bearings due to the wobble
+// velocitys which are less stressful on the bearings due to the wobble
 
 
 //=============================================================
@@ -232,27 +232,27 @@ float speedCommandMax = +200; //rps
 //=============================================================
 
 
-bool stopPIDSpeed(void);
-bool stopRawSpeed(void);
+bool stopPIDVelocity(void);
+bool stopRawVelocity(void);
 bool stopPIDPosition(void);
 void newShutdownTimer(float time);
 void doEncoderAPosition();
-void doEncoderASpeed();
+void doEncoderAVelocity();
 void doEncoderBPosition();
 void encoderWrap(void);
 bool inRange(float val, float min, float max);
 void changePIDCoefficients(void);
 void resetPIDSignal(void);
-void calculateSpeedPID(void);
+void calculateVelocityPID(void);
 void calculatePositionPID(void);
 float lowpass_filter(float input, float previous_output);
 float deadband(float input, float band);
 float friction_compensation_static(float drive_signal, float encoderAngVel, float error);
 float friction_compensation_dynamic(float drive_signal, float encoderAngVel, float error);
 void updateDrivePosition(void);
-void updateDriveSpeed(void);
+void updateDriveVelocity(void);
 float limitDrivePosition(float drive);
-float limitDriveSpeed(float drive);
+float limitDriveVelocity(float drive);
 float limit(float val, float min, float max);
 float addFC(float drive);
 void calculatePID(void);
@@ -279,11 +279,11 @@ typedef enum
   STATE_MOTOR_CHANGE_COMMAND,
   STATE_MOTOR_CHANGE_PARAMETERS,
   STATE_MOTOR_AFTER,
-  STATE_SPEED_BEFORE,
-  STATE_SPEED_DURING, 
-  STATE_SPEED_CHANGE_COMMAND,
-  STATE_SPEED_CHANGE_PARAMETERS,
-  STATE_SPEED_AFTER,
+  STATE_VELOCITY_BEFORE,
+  STATE_VELOCITY_DURING, 
+  STATE_VELOCITY_CHANGE_COMMAND,
+  STATE_VELOCITY_CHANGE_PARAMETERS,
+  STATE_VELOCITY_AFTER,
   STATE_POSITION_BEFORE,
   STATE_POSITION_DURING, 
   STATE_POSITION_CHANGE_COMMAND,
@@ -302,11 +302,11 @@ void stateMotorDuring(void);
 void stateMotorChangeCommand(void);
 void stateMotorChangeParameters(void);
 void stateMotorAfter(void);
-void stateSpeedBefore(void);
-void stateSpeedDuring(void);
-void stateSpeedChangeCommand(void);
-void stateSpeedChangeParameters(void);
-void stateSpeedAfter(void);
+void stateVelocityBefore(void);
+void stateVelocityDuring(void);
+void stateVelocityChangeCommand(void);
+void stateVelocityChangeParameters(void);
+void stateVelocityAfter(void);
 void statePositionBefore(void);
 void statePositionDuring(void);
 void statePositionChangeCommand(void);
@@ -338,11 +338,11 @@ StateMachineType StateMachine[] =
   {STATE_MOTOR_CHANGE_COMMAND,       stateMotorChangeCommand},
   {STATE_MOTOR_CHANGE_PARAMETERS,    stateMotorChangeParameters},
   {STATE_MOTOR_AFTER,                stateMotorAfter},
-  {STATE_SPEED_BEFORE,               stateSpeedBefore},
-  {STATE_SPEED_DURING,               stateSpeedDuring},
-  {STATE_SPEED_CHANGE_COMMAND,       stateSpeedChangeCommand},
-  {STATE_SPEED_CHANGE_PARAMETERS,    stateSpeedChangeParameters},
-  {STATE_SPEED_AFTER,                stateSpeedAfter},
+  {STATE_VELOCITY_BEFORE,               stateVelocityBefore},
+  {STATE_VELOCITY_DURING,               stateVelocityDuring},
+  {STATE_VELOCITY_CHANGE_COMMAND,       stateVelocityChangeCommand},
+  {STATE_VELOCITY_CHANGE_PARAMETERS,    stateVelocityChangeParameters},
+  {STATE_VELOCITY_AFTER,                stateVelocityAfter},
   {STATE_POSITION_BEFORE,            statePositionBefore},
   {STATE_POSITION_DURING,            statePositionDuring},
   {STATE_POSITION_CHANGE_COMMAND,    statePositionChangeCommand},
@@ -452,7 +452,7 @@ void stateMotorBefore(void) {
   motorChangeCommand = 0; 
   motorCommand = 0; //start with motor off
 
-  report_integer = reportSpeed;
+  report_integer = reportVelocity;
 
 }
 
@@ -521,24 +521,24 @@ void stateMotorAfter(void) {
 }
 
 
-void stateSpeedBefore(void) {
+void stateVelocityBefore(void) {
 
-  state = STATE_SPEED_DURING;
+  state = STATE_VELOCITY_DURING;
 
   lastCommandMillis = millis();
   
-  speedChangeCommand = 0;
+  velocityChangeCommand = 0;
 
-  controller.setLimits(-speedMaxRPS,speedMaxRPS);
-  controller.setCommand(speedChangeCommand);
+  controller.setLimits(-velocityMaxRPS,velocityMaxRPS);
+  controller.setCommand(velocityChangeCommand);
 
-  report_integer = reportSpeed;
+  report_integer = reportVelocity;
 }
 
 
-void stateSpeedDuring(void) {
+void stateVelocityDuring(void) {
 
-  state = STATE_SPEED_DURING; 
+  state = STATE_VELOCITY_DURING; 
 
   float v, y, yp;
   float c;
@@ -549,7 +549,7 @@ void stateSpeedDuring(void) {
     
 	y = controller.update(v);
 
-	yp = driverSpeed.drive(y,v);
+	yp = driverVelocity.drive(y,v);
 	
 	motor.drive(yp);
 
@@ -585,38 +585,38 @@ void stateSpeedDuring(void) {
     doReport = false; //clear flag so can run again later
   }
 
-  if (abs(v) > speedLimit) {
+  if (abs(v) > velocityLimit) {
 	state = STATE_POSITION_AFTER;
 	Serial.println("{\"error\":\"position limit exceeded\"}");
   }
   
   // It's ok to wait in a state a long time if we are NOT using the motor
-  if (!cmpf(controller.getCommand(),0, speedEpsilon)) {
+  if (!cmpf(controller.getCommand(),0, velocityEpsilon)) {
     if (millis() >= lastCommandMillis + shutdownTimeMillis) {
 	  Serial.println("{\"warn\":\"maximum run time exceeded\"}");
-      state = STATE_SPEED_AFTER;
+      state = STATE_VELOCITY_AFTER;
     }
   }
 }
 
-void stateSpeedChangeCommand(void) {
+void stateVelocityChangeCommand(void) {
 
-  state = STATE_SPEED_DURING;
+  state = STATE_VELOCITY_DURING;
 
-  if (abs(speedChangeCommand) <= speedCommandMax) {
-	controller.setCommand(speedChangeCommand);
+  if (abs(velocityChangeCommand) <= velocityCommandMax) {
+	controller.setCommand(velocityChangeCommand);
 	Serial.print("{\"info\":\"new velocity command\",\"c\":\"");
 	Serial.print(velocityToExternalUnits(controller.getCommand()));
 	Serial.print("\"}"); 
   } else {
-	Serial.println("{\"error\":\"cannot command speed outside range\"}");
+	Serial.println("{\"error\":\"cannot command velocity outside range\"}");
   }
 }
 
 
-void stateSpeedChangeParameters(void) {
+void stateVelocityChangeParameters(void) {
 
-  state = STATE_SPEED_DURING;
+  state = STATE_VELOCITY_DURING;
 
   lastCommandMillis = millis();
   
@@ -626,7 +626,7 @@ void stateSpeedChangeParameters(void) {
 
 
 
-void stateSpeedAfter(void) {
+void stateVelocityAfter(void) {
 
   state = STATE_STOPPING_BEFORE;
   
@@ -842,10 +842,10 @@ void setup() {
   driverPosition.primaryOffsetNeg = positionPrimaryOffsetNeg; 
   driverPosition.primaryOffsetThreshold = 0; //rps
   
-  driverSpeed.threshold = 0.0; //don't use second curve
-  driverSpeed.primaryOffsetPos = speedPrimaryOffsetPos;
-  driverSpeed.primaryOffsetNeg = speedPrimaryOffsetPos;
-  driverSpeed.primaryOffsetThreshold = 0;
+  driverVelocity.threshold = 0.0; //don't use second curve
+  driverVelocity.primaryOffsetPos = velocityPrimaryOffsetPos;
+  driverVelocity.primaryOffsetNeg = velocityPrimaryOffsetPos;
+  driverVelocity.primaryOffsetThreshold = 0;
   
   lastCommandMillis = millis();
 
@@ -1001,9 +1001,9 @@ void changePIDCoefficients(void) {
  *    a position commanded as +PI/4 rad is treated internally 
  *    as +0.125 (1/8th of revolution from zero).
  *
- *    a speed commanded as +20*PI rad/sec (~62.83) is treated internally 
+ *    a velocity commanded as +20*PI rad/sec (~62.83) is treated internally 
  *    as +10.0 (10 revolutions per second)
- *    For appreciation of the speed involved, note that
+ *    For appreciation of the velocity involved, note that
  *    1 revolution per second is ~6.28 rad/sec
  *    1 revolution per second is 60 rpm
  *    1 rad/sec is 9.55rpm ie. approx factor of 10 if doing mental estimates
@@ -1085,12 +1085,12 @@ StateType readSerialJSON(StateType state) {
       }
 
 	} else if(strcmp(set, "velocity")==0) {
-      if(state == STATE_SPEED_DURING) {
-        state = STATE_SPEED_CHANGE_COMMAND;
-        speedChangeCommand = velocityFromExternalUnits(doc["to"]);
+      if(state == STATE_VELOCITY_DURING) {
+        state = STATE_VELOCITY_CHANGE_COMMAND;
+        velocityChangeCommand = velocityFromExternalUnits(doc["to"]);
 		if (debug) {
-		  Serial.print("speedChangeCommand=");
-		  Serial.println(speedChangeCommand);
+		  Serial.print("velocityChangeCommand=");
+		  Serial.println(velocityChangeCommand);
 		}
       } else {
         Serial.println("{\"error\":\"in wrong state to set velocity\"}");
@@ -1102,7 +1102,7 @@ StateType readSerialJSON(StateType state) {
 
       if(state == STATE_STOPPED) {
         if(strcmp(new_mode, "velocity") == 0) {
-          state = STATE_SPEED_BEFORE;
+          state = STATE_VELOCITY_BEFORE;
         }
         else if(strcmp(new_mode, "motor") == 0) {
           state = STATE_MOTOR_BEFORE;
@@ -1155,8 +1155,8 @@ StateType readSerialJSON(StateType state) {
       if (isNewKp || isNewKi || isNewKd || isNewTs || isNewN) {
         if ( state == STATE_POSITION_DURING) {
           state = STATE_POSITION_CHANGE_PARAMETERS;
-        } else if (state == STATE_SPEED_DURING) {
-          state = STATE_SPEED_CHANGE_PARAMETERS;
+        } else if (state == STATE_VELOCITY_DURING) {
+          state = STATE_VELOCITY_CHANGE_PARAMETERS;
         } else {
           if (debug) Serial.println("{\"error\":\"in wrong state to set coefficients\"}");
         }
@@ -1192,13 +1192,13 @@ StateType readSerialJSON(StateType state) {
       if(!doc["von"].isNull()) {
 		float von = doc["von"];
 		if (abs(von) <= 1.0) {
-		  driverSpeed.primaryOffsetNeg = von;
+		  driverVelocity.primaryOffsetNeg = von;
 		}
 	  }
       if(!doc["vop"].isNull()) {
 		float vop = doc["vop"];
 		if (abs(vop) <= 1.0) {
-		  driverSpeed.primaryOffsetPos = vop;
+		  driverVelocity.primaryOffsetPos = vop;
 		}
 	  }
 	  
@@ -1257,9 +1257,9 @@ StateType readSerialJSON(StateType state) {
 	Serial.print(",\"pop\":");
 	Serial.print(driverPosition.primaryOffsetPos);	  
 	Serial.print(",\"von\":");
-	Serial.print(driverSpeed.primaryOffsetNeg);
+	Serial.print(driverVelocity.primaryOffsetNeg);
 	Serial.print(",\"vop\":");
-	Serial.print(driverSpeed.primaryOffsetPos);
+	Serial.print(driverVelocity.primaryOffsetPos);
 	Serial.println("}");
 	releaseSerial();
 
@@ -1275,9 +1275,9 @@ StateType readSerialJSON(StateType state) {
 	Serial.print(",\"pp\":");
 	Serial.print(positionCommandMax);
 	Serial.print(",\"vn\":");	
-    Serial.print(speedCommandMin);
+    Serial.print(velocityCommandMin);
 	Serial.print(",\"vp\":");
-	Serial.print(speedCommandMax);	
+	Serial.print(velocityCommandMax);	
 	Serial.println("}");
 	releaseSerial();
 	
@@ -1353,7 +1353,7 @@ void report(void)
 		Serial.print(",\"c\":");
 		Serial.print(positionToExternalUnits(controller.getCommand()));
 		
-	  } else if (state == STATE_SPEED_DURING) {
+	  } else if (state == STATE_VELOCITY_DURING) {
 		
 		Serial.print(",\"c\":");
 		Serial.print(velocityToExternalUnits(controller.getCommand()));
