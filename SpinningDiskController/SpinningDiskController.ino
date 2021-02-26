@@ -16,7 +16,7 @@
 // SET BOTH THESE TO FALSE BEFORE ROLLING OUT IN PRODUCTION
 
 // report additional information (may affect performance)
-bool debug = true;
+bool debug = false;
 bool trace = false;
 
 // enable on-the-fly setting of additional tuning parameters
@@ -664,8 +664,10 @@ void statePositionBefore(void) {
 	requestZeroPosition = true;
 
 	if (debug) {
+	  requestSerial();
 	  Serial.print("Disk not zeroed, p = ");
 	  Serial.println(p);
+	  releaseSerial();
 	}
   
   }
