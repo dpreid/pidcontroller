@@ -207,6 +207,7 @@ bool isNewN = false;
 
 // SMStateChangeDCMotor
 float motorMaxCommand = 12.0; //external world units are 0 to +/-12V
+float motorMinCommand = 0.0; //we're not actually using this yet ....
 float motorChangeCommand = 0;
 float motorCommand = 0;
 
@@ -218,8 +219,8 @@ float positionCommandMax = +2;
 
 // SMStateChangePIDSpeed
 float speedChangeCommand = 0;
-float speedCommandMin = -40; //rps
-float speedCommandMax = +40; //rps
+float speedCommandMin = -200; //rad/sec
+float speedCommandMax = +200; //rps
 
 // TODO sort out normalisation of speed command based on defined plant maximum
 // TODO consider linearising the drive to bring constant-gain regime down to slower
@@ -468,7 +469,7 @@ void stateMotorDuring(void) {
   }
 
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
-	Serial.println("{\"wrn\":\"maximum run time exceeded\"}");
+	Serial.println("{\"warn\":\"maximum run time exceeded\"}");
     state = STATE_MOTOR_AFTER;
   }
 
@@ -561,7 +562,7 @@ void stateSpeedDuring(void) {
 	  Serial.print(controller.getCommand());
 	  Serial.print(", v=");
 	  Serial.print(v);
-	  Serial.print(", err=");
+	  Serial.print(", error=");
 	  Serial.print(c-v);
 	  Serial.print(", y=");	  
 	  Serial.print(y);
@@ -586,13 +587,13 @@ void stateSpeedDuring(void) {
 
   if (abs(v) > speedLimit) {
 	state = STATE_POSITION_AFTER;
-	Serial.println("{\"err\":\"position limit exceeded\"}");
+	Serial.println("{\"error\":\"position limit exceeded\"}");
   }
   
   // It's ok to wait in a state a long time if we are NOT using the motor
   if (!cmpf(controller.getCommand(),0, speedEpsilon)) {
     if (millis() >= lastCommandMillis + shutdownTimeMillis) {
-	  Serial.println("{\"wrn\":\"maximum run time exceeded\"}");
+	  Serial.println("{\"warn\":\"maximum run time exceeded\"}");
       state = STATE_SPEED_AFTER;
     }
   }
@@ -608,7 +609,7 @@ void stateSpeedChangeCommand(void) {
 	Serial.print(velocityToExternalUnits(controller.getCommand()));
 	Serial.print("\"}"); 
   } else {
-	Serial.println("{\"err\":\"cannot command speed outside range\"}");
+	Serial.println("{\"error\":\"cannot command speed outside range\"}");
   }
 }
 
@@ -730,7 +731,7 @@ void statePositionDuring(void) {
   // Disk can go unstable, and oscillate over a large amplitude - prevent!
   if (p > positionLimitMax || p < positionLimitMin ) {
 	state = STATE_POSITION_AFTER;
-	Serial.println("{\"err\":\"position limit exceeded\"}");
+	Serial.println("{\"error\":\"position limit exceeded\"}");
   }
   // Disk can sometimes oscillate, so shutdown on timeout.
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
@@ -754,7 +755,7 @@ void statePositionChangeCommand(void) {
 	Serial.print(positionToExternalUnits(controller.getCommand()));
 	Serial.print("\"}"); 
   } else {
-    Serial.println("{\"err\":\"cannot command position outside range\"}");
+    Serial.println("{\"error\":\"cannot command position outside range\"}");
   }
 }
 
@@ -1072,7 +1073,7 @@ StateType readSerialJSON(StateType state) {
         state = STATE_MOTOR_CHANGE_COMMAND;
         motorChangeCommand = doc["to"];
       } else {
-        Serial.println("{\"err\":\"in wrong state to set volts\"}");
+        Serial.println("{\"error\":\"in wrong state to set volts\"}");
       }
 
 	} else if(strcmp(set, "position")==0) {
@@ -1080,7 +1081,7 @@ StateType readSerialJSON(StateType state) {
         state = STATE_POSITION_CHANGE_COMMAND;
         positionChangeCommand = positionFromExternalUnits(doc["to"]);
       } else {
-        Serial.println("{\"err\":\"in wrong state to set position\"}");
+        Serial.println("{\"error\":\"in wrong state to set position\"}");
       }
 
 	} else if(strcmp(set, "velocity")==0) {
@@ -1092,7 +1093,7 @@ StateType readSerialJSON(StateType state) {
 		  Serial.println(speedChangeCommand);
 		}
       } else {
-        Serial.println("{\"err\":\"in wrong state to set velocity\"}");
+        Serial.println("{\"error\":\"in wrong state to set velocity\"}");
       }
 
 	} else if(strcmp(set, "mode")==0) {
@@ -1157,13 +1158,51 @@ StateType readSerialJSON(StateType state) {
         } else if (state == STATE_SPEED_DURING) {
           state = STATE_SPEED_CHANGE_PARAMETERS;
         } else {
-          if (debug) Serial.println("{\"err\":\"in wrong state to set coefficients\"}");
+          if (debug) Serial.println("{\"error\":\"in wrong state to set coefficients\"}");
         }
 
       }
 
-    }
-    else if (strcmp(set, "show")==0) {
+    } else if (strcmp(set, "drive")==0) {
+  
+      if(!doc["mon"].isNull()) {
+		float mon = doc["mon"];
+		if (abs(mon) <= 1.0) {
+		  driverMotor.primaryOffsetNeg = mon;
+		}
+	  }
+      if(!doc["mop"].isNull()) {
+		float mop = doc["mop"];
+		if (abs(mop) <= 1.0) {
+		  driverMotor.primaryOffsetPos = mop;
+		}
+	  }
+      if(!doc["pon"].isNull()) {
+		float pon = doc["pon"];
+		if (abs(pon) <= 1.0) {
+		  driverPosition.primaryOffsetNeg = pon;
+		}
+	  }
+      if(!doc["pop"].isNull()) {
+		float pop = doc["pop"];
+		if (abs(pop) <= 1.0) {
+		  driverPosition.primaryOffsetPos = pop;
+		}
+	  }	  
+      if(!doc["von"].isNull()) {
+		float von = doc["von"];
+		if (abs(von) <= 1.0) {
+		  driverSpeed.primaryOffsetNeg = von;
+		}
+	  }
+      if(!doc["vop"].isNull()) {
+		float vop = doc["vop"];
+		if (abs(vop) <= 1.0) {
+		  driverSpeed.primaryOffsetPos = vop;
+		}
+	  }
+	  
+	}  else if (strcmp(set, "show")==0) {
 
       const char* new_show = doc["to"];
 
@@ -1188,7 +1227,7 @@ StateType readSerialJSON(StateType state) {
 
   if (strcmp(get, "api")==0) {
 
-	// return api
+	Serial.println("\"info\",\"api\",\"version\":2.0,\"name\":\"spinner\"}");
 
   } else if (strcmp(get, "pid")==0){
 	//return pid parameters
@@ -1209,7 +1248,11 @@ StateType readSerialJSON(StateType state) {
   } else if (strcmp(get, "drive")==0) {
 
 	requestSerial();
-	Serial.print("{\"info\",\"drive\", \"pon\":");
+	Serial.print("{\"info\",\"drive\", \"mon\":");
+	Serial.print(driverMotor.primaryOffsetNeg);
+	Serial.print(",\"mop\":");
+	Serial.print(driverMotor.primaryOffsetPos);
+	Serial.print(", \"pon\":");
 	Serial.print(driverPosition.primaryOffsetNeg);
 	Serial.print(",\"pop\":");
 	Serial.print(driverPosition.primaryOffsetPos);	  
@@ -1220,8 +1263,25 @@ StateType readSerialJSON(StateType state) {
 	Serial.println("}");
 	releaseSerial();
 
-  }
-  else if (strcmp(get, "units")==0) {
+  }else if (strcmp(get, "limits")==0) {
+	
+	requestSerial();
+	Serial.print("{\"info\",\"limits\", \"mn\":");
+    Serial.print(motorMinCommand);
+	Serial.print(",\"mp\":");
+	Serial.print(motorMaxCommand);
+	Serial.print(",\"pn\":");	
+    Serial.print(positionCommandMin);
+	Serial.print(",\"pp\":");
+	Serial.print(positionCommandMax);
+	Serial.print(",\"vn\":");	
+    Serial.print(speedCommandMin);
+	Serial.print(",\"vp\":");
+	Serial.print(speedCommandMax);	
+	Serial.println("}");
+	releaseSerial();
+	
+  }  else if (strcmp(get, "units")==0) {
 	requestSerial();
 	Serial.println("{\"info\":\"units\",\"p\":\"rad\",\"v\":\"rad/s\",\"t\":\"s\"}");
 	releaseSerial();

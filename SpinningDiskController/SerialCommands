@@ -2,7 +2,6 @@
 {"set":"volts","to":-5}
 {"set":"mode","to":"velocity"}
 {"set":"mode","to":"position"}
-
 {"set":"mode","to":"stop"}
 
 {"set":"speed","to":100}
