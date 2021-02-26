@@ -88,15 +88,15 @@ float positionPrimaryOffsetNeg = -0.48;  //set in setup()
 
 
 // VELOCITY
-float velocityLimit = 8; //give a buffer so we can PID up to velocityMaxRPS, plus so we can reason separately about
+float velocityLimit = 32; // in rps just over give a buffer so we can PID up to velocityMaxRPS, plus so we can reason separately about
                       // error-to-drive mapping, and safe operating limits.
-float velocityMaxRPS = 4; // we can probably get to ~2500 rpm if we risk the bearings
+float velocityMaxRPS = 16; // we can probably get to ~2500 rpm if we risk the bearings
 static float plantForVelocity[] = {-velocityMaxRPS,velocityMaxRPS}; //+/- 100% in the app
 static float driveForVelocity[] = {-1,1}; // max 50% drive
 static int sizeVelocity = 2;
 Driver driverVelocity = Driver(plantForVelocity, driveForVelocity, sizeVelocity);
-float velocityPrimaryOffsetPos = 0.3; //set in setup()
-float velocityPrimaryOffsetNeg = -0.3;  //set in setup()
+float velocityPrimaryOffsetPos = 0.48; //set in setup()
+float velocityPrimaryOffsetNeg = -0.48;  //set in setup()
 
 
 // Timer - to switch off motor at end of a run
