@@ -468,6 +468,11 @@ void stateMotorDuring(void) {
     doReport = false; //clear flag so can run again later
   }
 
+  if (abs(disk.getVelocity()) > velocityLimit) {
+	state = STATE_MOTOR_AFTER;
+	Serial.println("{\"error\":\"velocity limit exceeded\"}");
+  }
+  
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
 	Serial.println("{\"warn\":\"maximum run time exceeded\"}");
     state = STATE_MOTOR_AFTER;
@@ -587,7 +592,7 @@ void stateVelocityDuring(void) {
 
   if (abs(v) > velocityLimit) {
 	state = STATE_POSITION_AFTER;
-	Serial.println("{\"error\":\"position limit exceeded\"}");
+	Serial.println("{\"error\":\"velocity limit exceeded\"}");
   }
   
   // It's ok to wait in a state a long time if we are NOT using the motor
