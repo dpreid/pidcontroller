@@ -72,10 +72,11 @@ MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, direction, 2400); // 20 kHz
 
 // MOTOR
 static float plantForMotor[] = {-100,100}; //+/- 100% in the app
-static float driveForMotor[] = {-0.5,0.5}; // max 50% drive
+static float driveForMotor[] = {-0.4,0.4}; // was max 50% drive 
 static int sizeMotor = 2;
 Driver driverMotor = Driver(plantForMotor, driveForMotor, sizeMotor);
-
+float motorPrimaryOffsetPos = 0.45; //set in setup()
+float motorPrimaryOffsetNeg = -0.45;  //set in setup()
 
 // POSITION
 static float plantForPosition[] = {-1,+1}; // was: max error is when half a revolution away
@@ -829,6 +830,9 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(encoderPinB), counterB, CHANGE);
   
   driverMotor.threshold = 0.0; //don't use second curve
+  driverMotor.primaryOffsetPos = motorPrimaryOffsetPos; 
+  driverMotor.primaryOffsetNeg = motorPrimaryOffsetNeg; 
+  driverMotor.primaryOffsetThreshold = 0; //rps
   
   driverPosition.threshold = 0.0; //don't use second curve
   driverPosition.primaryOffsetPos = positionPrimaryOffsetPos; 
