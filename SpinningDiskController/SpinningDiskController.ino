@@ -71,7 +71,7 @@ MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, direction, 2400); // 20 kHz
 /******* Drive signals ********/
 
 // MOTOR
-static float plantForMotor[] = {-100,100}; //+/- 100% in the app
+static float plantForMotor[] = {-12,12}; //+/- 100% in the app
 static float driveForMotor[] = {-0.4,0.4}; // was max 50% drive 
 static int sizeMotor = 2;
 Driver driverMotor = Driver(plantForMotor, driveForMotor, sizeMotor);
@@ -206,7 +206,7 @@ bool isNewTs = false;
 bool isNewN = false;
 
 // SMStateChangeDCMotor
-float motorMaxCommand = 100.0; //external world units are 0 to +/-100%
+float motorMaxCommand = 12.0; //external world units are 0 to +/-12V
 float motorChangeCommand = 0;
 float motorCommand = 0;
 
@@ -1064,8 +1064,24 @@ StateType readSerialJSON(StateType state) {
 
 	if(strcmp(set, "api")==0) {
 	  apiVersion = doc["to"];
-	}
-	else if(strcmp(set, "speed")==0) {
+
+	} else if(strcmp(set, "motor")==0) {
+	  if(state == STATE_MOTOR_DURING) {
+        state = STATE_MOTOR_CHANGE_COMMAND;
+        motorChangeCommand = doc["to"];
+      } else {
+        Serial.println("{\"err\":\"in wrong state to set volts\"}");
+      }
+
+	} else if(strcmp(set, "position")==0) {
+      if(state == STATE_POSITION_DURING) {
+        state = STATE_POSITION_CHANGE_COMMAND;
+        positionChangeCommand = positionFromExternalUnits(doc["to"]);
+      } else {
+        Serial.println("{\"err\":\"in wrong state to set position\"}");
+      }
+
+	} else if(strcmp(set, "velocity")==0) {
       if(state == STATE_SPEED_DURING) {
         state = STATE_SPEED_CHANGE_COMMAND;
         speedChangeCommand = velocityFromExternalUnits(doc["to"]);
@@ -1073,33 +1089,22 @@ StateType readSerialJSON(StateType state) {
 		  Serial.print("speedChangeCommand=");
 		  Serial.println(speedChangeCommand);
 		}
-      } else if(state == STATE_MOTOR_DURING) {
-        state = STATE_MOTOR_CHANGE_COMMAND;
-        motorChangeCommand = doc["to"];
       } else {
-        Serial.println("{\"err\":\"in wrong state to set speed\"}");
+        Serial.println("{\"err\":\"in wrong state to set velocity\"}");
       }
-    }
-    else if(strcmp(set, "position")==0) {
-      if(state == STATE_POSITION_DURING) {
-        state = STATE_POSITION_CHANGE_COMMAND;
-        positionChangeCommand = positionFromExternalUnits(doc["to"]);
-      } else {
-        Serial.println("{\"err\":\"in wrong state to set position\"}");
-      }
-    }
-    else if(strcmp(set, "mode")==0) {
+
+	} else if(strcmp(set, "mode")==0) {
 
       const char* new_mode = doc["to"];
 
       if(state == STATE_STOPPED) {
-        if(strcmp(new_mode, "speedPid") == 0) {
+        if(strcmp(new_mode, "velocity") == 0) {
           state = STATE_SPEED_BEFORE;
         }
-        else if(strcmp(new_mode, "speedRaw") == 0) {
+        else if(strcmp(new_mode, "motor") == 0) {
           state = STATE_MOTOR_BEFORE;
         }
-        else if(strcmp(new_mode, "positionPid") == 0) {
+        else if(strcmp(new_mode, "position") == 0) {
           state = STATE_POSITION_BEFORE;
         }
       } else {
