@@ -1,11 +1,13 @@
 {"set":"mode","to":"motor"}
 {"set":"volts","to":-5}
-
+{"set":"mode","to":"velocity"}
 {"set":"mode","to":"position"}
 
 {"set":"mode","to":"stop"}
 
 {"set":"speed","to":100}
+{"set":"velocity","to":40}	
+{"get":"pid"}
 
 {"set":"speed","to":50}		//speed parameter in rpm (max 1000) for PID_SPEED and 0-100% for DC_Motor
 {"set":"speed","to":60}
@@ -145,6 +147,7 @@
 {"set":"position","to":0}
 {"set":"position","to":1.0}
 {"set":"p","pre":32000}
+
 
 {"set":"position","to":-0.51}
 {"set":"position","to":-0.52}

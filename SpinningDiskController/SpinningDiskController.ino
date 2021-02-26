@@ -604,7 +604,7 @@ void stateSpeedChangeCommand(void) {
 
   if (abs(speedChangeCommand) <= speedCommandMax) {
 	controller.setCommand(speedChangeCommand);
-	Serial.print("{\"inf\":\"new velocity command\",\"c\":\"");
+	Serial.print("{\"info\":\"new velocity command\",\"c\":\"");
 	Serial.print(velocityToExternalUnits(controller.getCommand()));
 	Serial.print("\"}"); 
   } else {
@@ -734,7 +734,7 @@ void statePositionDuring(void) {
   }
   // Disk can sometimes oscillate, so shutdown on timeout.
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
-	Serial.println("{\"inf\":\"maximum run time exceeded\"}");
+	Serial.println("{\"info\":\"maximum run time exceeded\"}");
     state = STATE_POSITION_AFTER;
   }
 
@@ -750,7 +750,7 @@ void statePositionChangeCommand(void) {
   if(positionChangeCommand >= positionCommandMin && positionChangeCommand <= positionCommandMax) {
 
     controller.setCommand(positionChangeCommand);
-	Serial.print("{\"inf\":\"new position command\",\"c\":\"");
+	Serial.print("{\"info\":\"new position command\",\"c\":\"");
 	Serial.print(positionToExternalUnits(controller.getCommand()));
 	Serial.print("\"}"); 
   } else {
@@ -957,7 +957,7 @@ void changePIDCoefficients(void) {
     isNewTs = false;
   }
 
-  Serial.print("{\"inf\":\"new PID parameters\"");
+  Serial.print("{\"info\":\"new PID parameters\"");
   Serial.print(",\"Kp\":");
   Serial.print(controller.getKp());
   Serial.print(",\"Ki\":");
@@ -1183,9 +1183,9 @@ StateType readSerialJSON(StateType state) {
     else if(strcmp(set, "timer") == 0) {
       newShutdownTimer(doc["to"]);
     }
-  }
-
+  
   const char* get = doc["get"];
+
   if (strcmp(get, "api")==0) {
 
 	// return api
@@ -1193,7 +1193,7 @@ StateType readSerialJSON(StateType state) {
   } else if (strcmp(get, "pid")==0){
 	//return pid parameters
 	requestSerial();
-	Serial.print("{\"inf\",\"pid\", \"kp\":");
+	Serial.print("{\"info\",\"pid\", \"kp\":");
 	Serial.print(controller.getKp());
 	Serial.print(",\"ki\":");
 	Serial.print(controller.getKi());	  
@@ -1209,7 +1209,7 @@ StateType readSerialJSON(StateType state) {
   } else if (strcmp(get, "drive")==0) {
 
 	requestSerial();
-	Serial.print("{\"inf\",\"drive\", \"pon\":");
+	Serial.print("{\"info\",\"drive\", \"pon\":");
 	Serial.print(driverPosition.primaryOffsetNeg);
 	Serial.print(",\"pop\":");
 	Serial.print(driverPosition.primaryOffsetPos);	  
@@ -1223,14 +1223,14 @@ StateType readSerialJSON(StateType state) {
   }
   else if (strcmp(get, "units")==0) {
 	requestSerial();
-	Serial.println("{\"inf\":\"units\",\"p\":\"rad\",\"v\":\"rad/s\",\"t\":\"s\"}");
+	Serial.println("{\"info\":\"units\",\"p\":\"rad\",\"v\":\"rad/s\",\"t\":\"s\"}");
 	releaseSerial();
   }
   else if (strcmp(get, "uptime")==0) {
 	//return seconds
 
   }
-
+  }
   
   return state;     //return whatever state it changed to or maintain the state.
 }
