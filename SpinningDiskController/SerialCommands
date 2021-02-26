@@ -71,7 +71,7 @@
 
 {"set":"mode","to":"speedPid"}
 {"set":"speed","to":40}
-{"set":"mode","to":"stop"}
+ {"set":"mode","to":"stop"}
 {"set":"mode","to":"positionPid"}
 {"set":"parameters","kp":0.1}
 {"set":"parameters","kp":0.2}
@@ -141,7 +141,13 @@
 {"set":"position","to":1.0}
 {"set":"p","pre":32000}
 
-
+{"set":"position","to":-0.51}
+{"set":"position","to":-0.52}
+{"set":"position","to":-0.525}
+{"set":"position","to":-0.527}
+{"set":"position","to":-0.528}
+{"set":"position","to":-0.529}
+{"set":"position","to":-0.53}
 
 {"set":"p","fcs_cw":7,"fcs_ccw":8,"fcd_cw":9,"fcd_ccw":10,"fcw":11}
 {"set":"p","fcs_cw":38.25,"fcs_ccw":36.13,"fcd_cw":21.25,"fcd_ccw":19.12,"fcw":5}

@@ -787,25 +787,7 @@ void SMRun(void)
 
 }
 
-//This function is run on a timer interrupt defined by PIDInterval/timer_interrupt_freq.
-/*void TimerInterrupt(void) {
 
-  if (requestZeroPosition) {
-	encoder.write(0);
-  }
-  
-  disk.sample(encoder.read(),micros());
-  
-  doPID = true;
-
-  report_count++;
-  if(report_count >= report_integer) {
-    doReport = true;
-    report_count = 0;
-  }
-
-}
-*/
 //This function is run on a timer interrupt defined by PIDInterval/timer_interrupt_freq.
 void TimerInterrupt(void) {
   lastCount = count;
@@ -820,6 +802,7 @@ void counterA(void) {
 
   pulse += (A==B ? +1 : - 1);
 }
+
 void counterB(void) {
 
   bool A = (PORT->Group[g_APinDescription[encoderPinA].ulPort].IN.reg & (1ul << g_APinDescription[encoderPinA].ulPin)) != 0 ;
@@ -834,7 +817,6 @@ void counterB(void) {
 
 void setup() {
 
-  // encoder
 
   attachInterrupt(digitalPinToInterrupt(encoderPinA), counterA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB), counterB, CHANGE);
@@ -872,10 +854,11 @@ void loop() {
 	}
 
 	// must ensure initialisation and first step
-	// are timestepSeconds part, so initialise on first time period
-	// sample on second and subsequent
+	// are done in separate time steps to avoid
+	// polluting the velocity calculation with 
+	// a small/zero time step
 	if (initialiseDisk) {
-	  disk.initialise(count); 
+	  disk.initialise(count-offset); 
 	  initialiseDisk = false;
 	} else {	
 	  disk.sample(count-offset);
