@@ -1065,7 +1065,7 @@ StateType readSerialJSON(StateType state) {
 	if(strcmp(set, "api")==0) {
 	  apiVersion = doc["to"];
 
-	} else if(strcmp(set, "motor")==0) {
+	} else if(strcmp(set, "volts")==0) {
 	  if(state == STATE_MOTOR_DURING) {
         state = STATE_MOTOR_CHANGE_COMMAND;
         motorChangeCommand = doc["to"];
