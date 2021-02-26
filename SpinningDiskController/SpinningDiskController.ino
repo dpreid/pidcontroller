@@ -1266,11 +1266,11 @@ void report(void)
 
 	  reportCount = 0;
 	  
-	  Serial.print("{\"enc\":");
+	  Serial.print("{\"d\":");
 	  Serial.print(positionToExternalUnits(disk.getDisplacement()));
-	  Serial.print(",\"enc_ang_vel\":");
+	  Serial.print(",\"v\":");
 	  Serial.print(velocityToExternalUnits(disk.getVelocity()));
-	  Serial.print(",\"time\":");
+	  Serial.print(",\"t\":");
 	  Serial.print(millis()); 
 	  Serial.println("}");
 	}
