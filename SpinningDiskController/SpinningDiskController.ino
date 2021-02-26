@@ -719,7 +719,7 @@ void statePositionDuring(void) {
 	  Serial.print(", e0=");	  
 	  Serial.print(positionToExternalUnits(controller.getError()));	  
 	  Serial.print(", *yp=");
-	  Serial.print(yp);
+	  Serial.println(yp);
 	  
 	} else  {
 	  report();
