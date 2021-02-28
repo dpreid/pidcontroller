@@ -40,7 +40,7 @@ float Kp = 1.0;
 float Ki = 0.0;
 float Kd = 0.0;
 float Ts = 0.005;
-float N = 1;
+float N = 5;
 float uMin = -1;
 float uMax = +1;
 
@@ -94,7 +94,7 @@ float positionPrimaryOffsetNeg = -0.15;  //set in setup()
 
 // VELOCITY
 
-float velocityLimit = 70; // in rps just over give a buffer so we can PID up to velocityMaxRPS, plus so we can reason separately about
+float velocityLimit = 80; // in rps just over give a buffer so we can PID up to velocityMaxRPS, plus so we can reason separately about
                       // error-to-drive mapping, and safe operating limits.
 float velocityMaxRPS = 32; // 16rps is 960 rpm we can probably get to ~2500 rpm if we risk the bearings
 float plantMaxDifference = 8;
@@ -131,6 +131,10 @@ const float positionPlantMax = 5;
 const float positionLimitMin  = -2; // limits for state to enforce
 const float positionLimitMax = 2;
 
+volatile int velocityLimitCount = 0;
+volatile int positionLimitCount = 0;
+const int velocityLimitCountThreshold = 10;
+const int positionLimitCountThreshold = 10;
 
 volatile float velocity_angular_velocity = 0; //for velocity mode velocity reporting
 unsigned long velocity_current_time_encoder = 0;
@@ -459,6 +463,8 @@ void stateMotorBefore(void) {
   state = STATE_MOTOR_DURING;
 
   lastCommandMillis = millis();
+
+  velocityLimitCount = 0;
   
   motorChangeCommand = 0; 
   motorCommand = 0; //start with motor off
@@ -480,11 +486,17 @@ void stateMotorDuring(void) {
   }
 
   if (abs(disk.getVelocity()) > velocityLimit) {
+	velocityLimitCount++;
+  } else {
+	velocityLimitCount = 0;
+  }
+
+  if (velocityLimitCount > velocityLimitCountThreshold) {
 	state = STATE_MOTOR_AFTER;
 	Serial.println("{\"error\":\"velocity limit exceeded\"}");
 	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
-
   }
+ 
   
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
 	Serial.println("{\"warn\":\"maximum run time exceeded\"}");
@@ -553,6 +565,8 @@ void stateVelocityBefore(void) {
   state = STATE_VELOCITY_DURING;
 
   lastCommandMillis = millis();
+
+  velocityLimitCount = 0;
   
   velocityChangeCommand = 0;
 
@@ -612,11 +626,18 @@ void stateVelocityDuring(void) {
     doReport = false; //clear flag so can run again later
   }
 
-  if (abs(v) > velocityLimit) {
-	state = STATE_POSITION_AFTER;
+  if (abs(disk.getVelocity()) > velocityLimit) {
+	velocityLimitCount++;
+  } else {
+	velocityLimitCount = 0;
+  }
+
+  if (velocityLimitCount > velocityLimitCountThreshold) {
+	state = STATE_MOTOR_AFTER;
 	Serial.println("{\"error\":\"velocity limit exceeded\"}");
 	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
+  
   
   // It's ok to wait in a state a long time if we are NOT using the motor
   if (!cmpf(controller.getCommand(),0, velocityEpsilon)) {
@@ -674,6 +695,9 @@ void statePositionBefore(void) {
   state = STATE_POSITION_BEFORE;
 
   lastCommandMillis = millis();
+
+  velocityLimitCount = 0;
+  positionLimitCount = 0;
 
   float p = disk.getDisplacement();
 
@@ -762,15 +786,30 @@ void statePositionDuring(void) {
 
   // Disk can go unstable, and oscillate over a large amplitude - prevent!
   if (p > positionLimitMax || p < positionLimitMin ) {
+	positionLimitCount++;
+  } else {
+	positionLimitCount = 0;
+  }
+  
+  if (positionLimitCount > positionLimitCountThreshold)  {
 	state = STATE_POSITION_AFTER;
 	Serial.println("{\"error\":\"position limit exceeded\"}");
 	Serial.println("{​\"error\":\"limit\",\"type\":\"position\",\"state\":\"stopping\"}");
   }
-  if (abs(v) > velocityLimit) {
-	state = STATE_POSITION_AFTER;
+
+
+  if (abs(disk.getVelocity()) > velocityLimit) {
+	velocityLimitCount++;
+  } else {
+	velocityLimitCount = 0;
+  }
+
+  if (velocityLimitCount > velocityLimitCountThreshold) {
+	state = STATE_MOTOR_AFTER;
 	Serial.println("{\"error\":\"velocity limit exceeded\"}");
 	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
+  
   // Disk can sometimes oscillate, so shutdown on timeout.
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
 	Serial.println("{\"info\":\"maximum run time exceeded\"}");
