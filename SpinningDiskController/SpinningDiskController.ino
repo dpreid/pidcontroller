@@ -1367,8 +1367,6 @@ void report(void)
 	  
 	  Serial.print("{\"d\":");
 	  Serial.print(positionToExternalUnits(disk.getDisplacement()));
-	  Serial.print(",\"enc\":");
-	  Serial.print(positionToExternalUnits(disk.getDisplacement()));	  
 	  Serial.print(",\"v\":");
 	  Serial.print(velocityToExternalUnits(disk.getVelocity()));
 	  Serial.print(",\"t\":");
@@ -1386,7 +1384,7 @@ void report(void)
 		Serial.print(positionToExternalUnits(controller.getError()));		
 		Serial.print(",\"m\":\"p\"");
 		Serial.print(",\"y\":");
-		
+		Serial.print(motorDriveVolts);
 					 
 		
 		
@@ -1399,7 +1397,8 @@ void report(void)
 		Serial.print(",\"e\":");
 		Serial.print(velocityToExternalUnits(controller.getError()));		
 		Serial.print(",\"m\":\"v\"");
-		
+		Serial.print(",\"y\":");
+		Serial.print(motorDriveVolts);
 	  } else if (state == STATE_MOTOR_DURING) {
 
 		Serial.print(",\"m\":\"m\"");
