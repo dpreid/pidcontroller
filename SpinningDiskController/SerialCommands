@@ -2,6 +2,12 @@
 {"set":"volts","to":65}
 {"set":"volts","to":-4}
 {"set":"volts","to":4}
+{"set":"volts","to":0.5}
+{"set":"volts","to":0.7}
+{"set":"volts","to":0.9}
+{"set":"volts","to":1.0}
+{"set":"volts","to":1.5}
+{"set":"volts","to":1.1}
 {"set":"volts","to":1.6}
 {"set":"volts","to":1.7}
 {"set":"volts","to":1.8}

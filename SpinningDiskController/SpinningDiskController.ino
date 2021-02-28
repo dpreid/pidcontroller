@@ -69,7 +69,7 @@ const int direction = 1; // If motor spins in the opposite direction then you ca
 
 // MotorBTS7960(int PWMA, int leftPWMPin, int rightPWMPin, int timerNumber, int offset, long prescale)
 //timer0 for pin6, timer1 for 4&7 https://github.com/ocrdu/Arduino_SAMD21_turbo_PWM, was 960000 for 48MHz/960000=50Hz
-MotorBTS7960 motor = MotorBTS7960(enablePin, leftPWMPin, rightPWMPin, 1, direction, 2400); // 20 kHz
+MotorBTS7960 motor = MotorBTS7960(enablePin, leftPWMPin, rightPWMPin, 1, direction, 24000); // 2 kHz
 //96000 for 500Hz, 120000 for 400Hz, 240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
 
@@ -88,8 +88,8 @@ static float plantForPosition[] = {-1,+1}; // was: max error is when half a revo
 static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
-float positionPrimaryOffsetPos = 0.15; //set in setup()
-float positionPrimaryOffsetNeg = -0.15;  //set in setup()
+float positionPrimaryOffsetPos = 0.083; //set in setup()
+float positionPrimaryOffsetNeg = -0.083;  //set in setup()
 
 
 // VELOCITY
@@ -102,8 +102,8 @@ static float plantForVelocity[] = {-plantMaxDifference, plantMaxDifference}; //+
 static float driveForVelocity[] = {-1,1}; // max 50% drive
 static int sizeVelocity = 2;
 Driver driverVelocity = Driver(plantForVelocity, driveForVelocity, sizeVelocity);
-float velocityPrimaryOffsetPos = 0.15; //set in setup()
-float velocityPrimaryOffsetNeg = -0.15;  //set in setup()
+float velocityPrimaryOffsetPos = 0.083; //set in setup()
+float velocityPrimaryOffsetNeg = -0.083;  //set in setup()
 
 
 // Timer - to switch off motor at end of a run
