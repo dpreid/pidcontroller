@@ -112,7 +112,7 @@ float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 #define indexPin 11
 
 const float encoderPPR = 2000;
-const float LPFCoefficient = 0.1;
+const float LPFCoefficient = 0.9;
 
 RotaryPlant disk = RotaryPlant(encoderPPR, LPFCoefficient, Ts);
 
