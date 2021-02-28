@@ -88,8 +88,8 @@ static float plantForPosition[] = {-1,+1}; // was: max error is when half a revo
 static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
-float positionPrimaryOffsetPos = 0.081; //set in setup()
-float positionPrimaryOffsetNeg = -0.081;  //set in setup()
+float positionPrimaryOffsetPos = 0.078; //set in setup()
+float positionPrimaryOffsetNeg = -0.078;  //set in setup()
 
 
 // VELOCITY
@@ -102,8 +102,8 @@ static float plantForVelocity[] = {-plantMaxDifference, plantMaxDifference}; //+
 static float driveForVelocity[] = {-1,1}; // max 50% drive
 static int sizeVelocity = 2;
 Driver driverVelocity = Driver(plantForVelocity, driveForVelocity, sizeVelocity);
-float velocityPrimaryOffsetPos = 0.081; //set in setup()
-float velocityPrimaryOffsetNeg = -0.081;  //set in setup()
+float velocityPrimaryOffsetPos = 0.078; //set in setup()
+float velocityPrimaryOffsetNeg = -0.078;  //set in setup()
 
 
 // Timer - to switch off motor at end of a run
