@@ -12,7 +12,8 @@
 {"set":"p","kp":0.1, "ki":0, "kd":0, "n":1}  
 {"set":"timer","to":10}				
 {"set":"parameters","kp":0.1}
-{"set":"parameters","vlpf":0.9}
+{"set":"parameters","vlpf":0.99}
+{"set":"parameters","vlpf":0.1}
 
 {"set":"parameters","kp":0.1}
 {"set":"parameters","kp":0.2}
