@@ -632,6 +632,8 @@ void stateVelocityChangeCommand(void) {
 
   state = STATE_VELOCITY_DURING;
 
+  lastCommandMillis = millis();
+
   if (abs(velocityChangeCommand) <= velocityCommandMax) {
 	controller.setCommand(velocityChangeCommand);
 	Serial.print("{\"info\":\"new velocity command\",\"c\":\"");
