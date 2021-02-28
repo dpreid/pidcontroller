@@ -72,11 +72,11 @@ MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, direction, 2400); // 20 kHz
 
 // MOTOR
 static float plantForMotor[] = {-12,12}; //+/- 100% in the app
-static float driveForMotor[] = {-0.4,0.4}; // was max 50% drive 
+static float driveForMotor[] = {-1,1}; // was 0.4 
 static int sizeMotor = 2;
 Driver driverMotor = Driver(plantForMotor, driveForMotor, sizeMotor);
-float motorPrimaryOffsetPos = 0.45; //set in setup()
-float motorPrimaryOffsetNeg = -0.45;  //set in setup()
+float motorPrimaryOffsetPos = 0; //was 0.45; //set in setup()
+float motorPrimaryOffsetNeg = 0; //was -0.45;  //set in setup()
 
 // POSITION
 static float plantForPosition[] = {-1,+1}; // was: max error is when half a revolution away
@@ -90,7 +90,7 @@ float positionPrimaryOffsetNeg = -0.48;  //set in setup()
 // VELOCITY
 float velocityLimit = 32; // in rps just over give a buffer so we can PID up to velocityMaxRPS, plus so we can reason separately about
                       // error-to-drive mapping, and safe operating limits.
-float velocityMaxRPS = 16; // we can probably get to ~2500 rpm if we risk the bearings
+float velocityMaxRPS = 16; // 16rps is 960 rpm we can probably get to ~2500 rpm if we risk the bearings
 static float plantForVelocity[] = {-velocityMaxRPS,velocityMaxRPS}; //+/- 100% in the app
 static float driveForVelocity[] = {-1,1}; // max 50% drive
 static int sizeVelocity = 2;
@@ -186,6 +186,9 @@ unsigned long dta; // moving average, needs right shifting by 3 bits to get corr
 bool writing = false; //semaphore for coordinating writes to serial port
 int apiVersion = 0; //legacy version
 long reportCount = 0; //for legacy report frequency
+
+float motorDriveVolts = 0;
+float motorMaxVolts = 12;
 
 // SM Awaiting Stop
 int awaitingStopP0 = 0;
@@ -400,7 +403,8 @@ void stateStoppingDuring(void) {
   state = STATE_STOPPING_DURING; 
 
   motor.brake(); //This is just free-wheeling, so needs no further commands.
-
+  motorDriveVolts = 0;
+  
   awaitingStopP1 = awaitingStopP0;
   awaitingStopP0 = disk.getDisplacement();
 
@@ -493,8 +497,12 @@ void stateMotorChangeCommand(void) {
 	 
     motorCommand = motorChangeCommand; //leave unchanged if outside range
 
-	motor.drive(driverMotor.drive(motorCommand, 0.0)); //driverMotors handles conversion from +/-100% to +/-1.0
-	
+	float yp = driverMotor.drive(motorCommand, 0.0);
+
+	motor.drive(yp); //driverMotors handles conversion from +/-100% to +/-1.0
+
+	motorDriveVolts = yp * motorMaxVolts;
+	  
 	if (debug) {
 	  Serial.print("Changed motorCommand to ");
 	  Serial.println(motorCommand);
@@ -521,7 +529,8 @@ void stateMotorAfter(void) {
   motorCommand = 0;
 
   motor.brake(); 
-	
+  motorDriveVolts = 0;
+  
   if (debug) Serial.print("{\"state\":\"MotorAfter\"}");
 }
 
@@ -557,7 +566,7 @@ void stateVelocityDuring(void) {
 	yp = driverVelocity.drive(y,v);
 	
 	motor.drive(yp);
-
+	motorDriveVolts = yp * motorMaxVolts;
   }
 
   if (doReport) { //flag set in interrupt routine
@@ -704,7 +713,7 @@ void statePositionDuring(void) {
 	yp = driverPosition.drive(y,v);
 	
 	motor.drive(yp);
-
+	motorDriveVolts = yp * motorMaxVolts;
   }
 
   if (doReport) { //flag set in interrupt routine
@@ -1338,41 +1347,45 @@ void report(void)
 	  Serial.print(",\"v\":");
 	  Serial.print(velocityToExternalUnits(disk.getVelocity()));
 	  Serial.print(",\"t\":");
-	  Serial.print(millis()); 
-	  Serial.println("}");
-	}
-
-  } else if (apiVersion == 1) {
-
-	// TODO add ep, ei, ed errors
-	Serial.print("{\"t\":");
-	Serial.print(millis());
-	Serial.print(",\"p\":");
-	Serial.print(positionToExternalUnits(disk.getDisplacement()));
-	Serial.print(",\"v\":");
-	Serial.print(velocityToExternalUnits(disk.getVelocity()));
-	if (show_mode == SHOW_LONG) {
-
+	  Serial.print(millis());
+	  Serial.print(",\"y\":");
+	  Serial.print(motorDriveVolts);
+	  
 	  if (state == STATE_POSITION_DURING) {
 		
 		Serial.print(",\"c\":");
 		Serial.print(positionToExternalUnits(controller.getCommand()));
+		Serial.print(",\"ep\":");
+		Serial.print(positionToExternalUnits(controller.getError()));
+		Serial.print(",\"m\":\"p\"");
+		Serial.print(",\"y\":");
+		
+					 
+		
 		
 	  } else if (state == STATE_VELOCITY_DURING) {
 		
 		Serial.print(",\"c\":");
 		Serial.print(velocityToExternalUnits(controller.getCommand()));
-	  }
-	}
-	
-  Serial.println("}");	
-  
-  } else {
-	Serial.print("{\"warn\":\"api not supported\",\"api\":");
-	Serial.print(apiVersion);
-	Serial.println("}");
-  }
+		Serial.print(",\"ep\":");
+		Serial.print(velocityToExternalUnits(controller.getError()));
+		Serial.print(",\"m\":\"v\"");
+		
+	  } else if (state == STATE_MOTOR_DURING) {
 
+		Serial.print(",\"m\":\"m\"");
+		
+	  } else {
+		
+		Serial.print(",\"m\":\"s\"");
+	  }
+	  
+	  
+	  Serial.println("}");
+	}
+
+  }
+  
   releaseSerial();
   doReport = false;
 }
