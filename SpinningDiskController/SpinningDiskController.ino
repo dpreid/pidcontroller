@@ -475,10 +475,13 @@ void stateMotorDuring(void) {
   if (abs(disk.getVelocity()) > velocityLimit) {
 	state = STATE_MOTOR_AFTER;
 	Serial.println("{\"error\":\"velocity limit exceeded\"}");
+	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
+
   }
   
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
 	Serial.println("{\"warn\":\"maximum run time exceeded\"}");
+	Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
     state = STATE_MOTOR_AFTER;
   }
 
@@ -493,20 +496,23 @@ void stateMotorChangeCommand(void) {
   
   if (debug) Serial.println("StateMotorChangeCommand");
   
-   if (abs(motorChangeCommand) <= motorMaxCommand) {
-	 
+  if (abs(motorChangeCommand) <= motorMaxCommand) {
+	
     motorCommand = motorChangeCommand; //leave unchanged if outside range
 
 	float yp = driverMotor.drive(motorCommand, 0.0);
-
+	
 	motor.drive(yp); //driverMotors handles conversion from +/-100% to +/-1.0
-
+	
 	motorDriveVolts = yp * motorMaxVolts;
-	  
+	
 	if (debug) {
 	  Serial.print("Changed motorCommand to ");
 	  Serial.println(motorCommand);
 	}
+  } else {
+	Serial.println("{\"error\":\"cannot command voltage outside range\"}");
+	Serial.println("{​\"error\":\"command\",\"type\":\"limit\",\"state\":\"motor\"}");
   }
   
 }
@@ -602,12 +608,14 @@ void stateVelocityDuring(void) {
   if (abs(v) > velocityLimit) {
 	state = STATE_POSITION_AFTER;
 	Serial.println("{\"error\":\"velocity limit exceeded\"}");
+	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
   
   // It's ok to wait in a state a long time if we are NOT using the motor
   if (!cmpf(controller.getCommand(),0, velocityEpsilon)) {
     if (millis() >= lastCommandMillis + shutdownTimeMillis) {
 	  Serial.println("{\"warn\":\"maximum run time exceeded\"}");
+	  Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
       state = STATE_VELOCITY_AFTER;
     }
   }
@@ -624,6 +632,7 @@ void stateVelocityChangeCommand(void) {
 	Serial.print("\"}"); 
   } else {
 	Serial.println("{\"error\":\"cannot command velocity outside range\"}");
+	Serial.println("{​\"error\":\"command\",\"type\":\"limit\",\"state\":\"velocity\"}");
   }
 }
 
@@ -746,10 +755,17 @@ void statePositionDuring(void) {
   if (p > positionLimitMax || p < positionLimitMin ) {
 	state = STATE_POSITION_AFTER;
 	Serial.println("{\"error\":\"position limit exceeded\"}");
+	Serial.println("{​\"error\":\"limit\",\"type\":\"position\",\"state\":\"stopping\"}");
+  }
+  if (abs(v) > velocityLimit) {
+	state = STATE_POSITION_AFTER;
+	Serial.println("{\"error\":\"velocity limit exceeded\"}");
+	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
   // Disk can sometimes oscillate, so shutdown on timeout.
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
 	Serial.println("{\"info\":\"maximum run time exceeded\"}");
+	Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
     state = STATE_POSITION_AFTER;
   }
 
@@ -770,6 +786,7 @@ void statePositionChangeCommand(void) {
 	Serial.print("\"}"); 
   } else {
     Serial.println("{\"error\":\"cannot command position outside range\"}");
+	Serial.println("{​\"error\":\"command\",\"type\":\"limit\",\"state\":\"position\"}");
   }
 }
 
@@ -1357,6 +1374,8 @@ void report(void)
 		Serial.print(positionToExternalUnits(controller.getCommand()));
 		Serial.print(",\"ep\":");
 		Serial.print(positionToExternalUnits(controller.getError()));
+		Serial.print(",\"e\":");
+		Serial.print(positionToExternalUnits(controller.getError()));		
 		Serial.print(",\"m\":\"p\"");
 		Serial.print(",\"y\":");
 		
@@ -1369,6 +1388,8 @@ void report(void)
 		Serial.print(velocityToExternalUnits(controller.getCommand()));
 		Serial.print(",\"ep\":");
 		Serial.print(velocityToExternalUnits(controller.getError()));
+		Serial.print(",\"e\":");
+		Serial.print(velocityToExternalUnits(controller.getError()));		
 		Serial.print(",\"m\":\"v\"");
 		
 	  } else if (state == STATE_MOTOR_DURING) {
