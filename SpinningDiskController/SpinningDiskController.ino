@@ -1380,6 +1380,7 @@ void report(void)
 		Serial.print(positionToExternalUnits(controller.getCommand()));
 		Serial.print(",\"p_sig\":");
 		Serial.print(positionToExternalUnits(controller.getError()));
+		Serial.print(",\"i_sig\":0,\"d_sig\":0");
 		Serial.print(",\"e\":");
 		Serial.print(positionToExternalUnits(controller.getError()));		
 		Serial.print(",\"m\":\"p\"");
@@ -1394,6 +1395,7 @@ void report(void)
 		Serial.print(velocityToExternalUnits(controller.getCommand()));
 		Serial.print(",\"p_sig\":");
 		Serial.print(velocityToExternalUnits(controller.getError()));
+		Serial.print(",\"i_sig\":0,\"d_sig\":0");
 		Serial.print(",\"e\":");
 		Serial.print(velocityToExternalUnits(controller.getError()));		
 		Serial.print(",\"m\":\"v\"");
