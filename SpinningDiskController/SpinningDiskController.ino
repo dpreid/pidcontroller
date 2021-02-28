@@ -1367,7 +1367,7 @@ void report(void)
 	  
 	  Serial.print("{\"d\":");
 	  Serial.print(positionToExternalUnits(disk.getDisplacement()));
-	  Serial.print("{\"p\":");
+	  Serial.print(",\"p\":");
 	  Serial.print(positionToExternalUnits(disk.getDisplacement()));	  
 	  Serial.print(",\"v\":");
 	  Serial.print(velocityToExternalUnits(disk.getVelocity()));
