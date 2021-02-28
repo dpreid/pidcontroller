@@ -39,7 +39,7 @@ float Kp = 1.0;
 float Ki = 0.0;
 float Kd = 0.0;
 float Ts = 0.005;
-float N = 20;
+float N = 1;
 float uMin = -1;
 float uMax = +1;
 
@@ -1193,6 +1193,12 @@ StateType readSerialJSON(StateType state) {
         }
 
       }
+
+	  if(!doc["vlpf"].isNull()) {
+		float lpf = doc["vlpf"];
+		disk.setLPF(lpf);
+      }
+	  
 
     } else if (strcmp(set, "drive")==0) {
   
