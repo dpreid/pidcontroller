@@ -1378,7 +1378,7 @@ void report(void)
 		
 		Serial.print(",\"c\":");
 		Serial.print(positionToExternalUnits(controller.getCommand()));
-		Serial.print(",\"ep\":");
+		Serial.print(",\"p_sig\":");
 		Serial.print(positionToExternalUnits(controller.getError()));
 		Serial.print(",\"e\":");
 		Serial.print(positionToExternalUnits(controller.getError()));		
