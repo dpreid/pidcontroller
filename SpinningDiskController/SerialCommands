@@ -32,7 +32,12 @@
 {"set":"mode","to":"stop"}
 {"set":"timer","to":10}
 {"set":"speed","to":100}
-{"set":"velocity","to":40}	
+{"set":"velocity","to":40}
+{"set":"velocity","to":100}
+{"set":"velocity","to":150}
+
+{"set":"velocity","to":200}
+
 {"get":"pid"}
 
 {"set":"p","kp":0.1, "ki":0, "kd":0, "n":1}  

@@ -88,8 +88,8 @@ static float plantForPosition[] = {-1,+1}; // was: max error is when half a revo
 static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
-float positionPrimaryOffsetPos = 0.21; //set in setup()
-float positionPrimaryOffsetNeg = -0.21;  //set in setup()
+float positionPrimaryOffsetPos = 0.15; //set in setup()
+float positionPrimaryOffsetNeg = -0.15;  //set in setup()
 
 
 // VELOCITY
@@ -97,13 +97,13 @@ float positionPrimaryOffsetNeg = -0.21;  //set in setup()
 float velocityLimit = 70; // in rps just over give a buffer so we can PID up to velocityMaxRPS, plus so we can reason separately about
                       // error-to-drive mapping, and safe operating limits.
 float velocityMaxRPS = 32; // 16rps is 960 rpm we can probably get to ~2500 rpm if we risk the bearings
-
-static float plantForVelocity[] = {-velocityMaxRPS,velocityMaxRPS}; //+/- 100% in the app
+float plantMaxDifference = 8;
+static float plantForVelocity[] = {-plantMaxDifference, plantMaxDifference}; //+/- 100% in the app
 static float driveForVelocity[] = {-1,1}; // max 50% drive
 static int sizeVelocity = 2;
 Driver driverVelocity = Driver(plantForVelocity, driveForVelocity, sizeVelocity);
-float velocityPrimaryOffsetPos = 0.21; //set in setup()
-float velocityPrimaryOffsetNeg = -0.21;  //set in setup()
+float velocityPrimaryOffsetPos = 0.15; //set in setup()
+float velocityPrimaryOffsetNeg = -0.15;  //set in setup()
 
 
 // Timer - to switch off motor at end of a run
