@@ -69,7 +69,7 @@ const int direction = 1; // If motor spins in the opposite direction then you ca
 
 // MotorBTS7960(int PWMA, int leftPWMPin, int rightPWMPin, int timerNumber, int offset, long prescale)
 //timer0 for pin6, timer1 for 4&7 https://github.com/ocrdu/Arduino_SAMD21_turbo_PWM, was 960000 for 48MHz/960000=50Hz
-MotorBTS7960 motor = MotorBTS7960(enablePin, leftPWMPin, rightPWMPin, 1, direction, 24000); // 2 kHz
+MotorBTS7960 motor = MotorBTS7960(enablePin, leftPWMPin, rightPWMPin, 1, direction, 12000); // 4 kHz (was 24000, 2kHz)
 //96000 for 500Hz, 120000 for 400Hz, 240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
 
@@ -84,7 +84,7 @@ float motorPrimaryOffsetPos = 0; //set in setup()
 float motorPrimaryOffsetNeg = 0; //set in setup()
 
 // POSITION
-static float plantForPosition[] = {-3,+3}; // was: max error is when half a revolution away
+static float plantForPosition[] = {-2,+2}; // was: max error is when half a revolution away
 static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
