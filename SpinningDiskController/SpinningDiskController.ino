@@ -84,7 +84,7 @@ float motorPrimaryOffsetPos = 0; //set in setup()
 float motorPrimaryOffsetNeg = 0; //set in setup()
 
 // POSITION
-static float plantForPosition[] = {-1,+1}; // was: max error is when half a revolution away
+static float plantForPosition[] = {-3,+3}; // was: max error is when half a revolution away
 static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
