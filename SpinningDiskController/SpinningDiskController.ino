@@ -18,6 +18,7 @@
 // report additional information (may affect performance)
 bool debug = false;
 bool trace = false;
+bool permitOverspeed = false;
 
 // enable on-the-fly setting of additional tuning parameters
 bool development = true;
@@ -28,7 +29,7 @@ bool development = true;
 #include "ArduinoJson-v6.9.1.h"
 #include <dcmotor.h>
 #include <Encoder.h>
-#include <MotorControllerPmodHB3SAMD21.h>
+#include <MotorControllerBTS7960.h>
 #include <pid.h>
 #include <rotaryPlant.h>
 
@@ -39,7 +40,7 @@ float Kp = 1.0;
 float Ki = 0.0;
 float Kd = 0.0;
 float Ts = 0.005;
-float N = 1;
+float N = 5;
 float uMin = -1;
 float uMax = +1;
 
@@ -59,12 +60,16 @@ const float TsMax = 0.100; //100 milliseconds
 
 
 // Pins connecting to drive board
-#define AIN1 5
-#define PWMA 6
+#define AIN1 5 //old DIRECTION
+#define enablePin  6 //old PWMA ENABLE
+#define leftPWMPin 4
+#define rightPWMPin 7
 
 const int direction = 1; // If motor spins in the opposite direction then you can change this to -1.
 
-MotorHB3SAMD21 motor = MotorHB3SAMD21(AIN1, PWMA, direction, 2400); // 20 kHz
+// MotorBTS7960(int PWMA, int leftPWMPin, int rightPWMPin, int timerNumber, int offset, long prescale)
+//timer0 for pin6, timer1 for 4&7 https://github.com/ocrdu/Arduino_SAMD21_turbo_PWM, was 960000 for 48MHz/960000=50Hz
+MotorBTS7960 motor = MotorBTS7960(enablePin, leftPWMPin, rightPWMPin, 1, direction, 24000); // 2 kHz
 //96000 for 500Hz, 120000 for 400Hz, 240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
 
 
@@ -75,28 +80,30 @@ static float plantForMotor[] = {-12,12}; //+/- 100% in the app
 static float driveForMotor[] = {-1,1}; // was 0.4 
 static int sizeMotor = 2;
 Driver driverMotor = Driver(plantForMotor, driveForMotor, sizeMotor);
-float motorPrimaryOffsetPos = 0; //was 0.45; //set in setup()
-float motorPrimaryOffsetNeg = 0; //was -0.45;  //set in setup()
+float motorPrimaryOffsetPos = 0; //set in setup()
+float motorPrimaryOffsetNeg = 0; //set in setup()
 
 // POSITION
 static float plantForPosition[] = {-1,+1}; // was: max error is when half a revolution away
 static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
-float positionPrimaryOffsetPos = 0.48; //set in setup()
-float positionPrimaryOffsetNeg = -0.48;  //set in setup()
+float positionPrimaryOffsetPos = 0.0525; //set in setup()
+float positionPrimaryOffsetNeg = -0.0525;  //set in setup()
 
 
 // VELOCITY
-float velocityLimit = 32; // in rps just over give a buffer so we can PID up to velocityMaxRPS, plus so we can reason separately about
+
+float velocityLimit = 80; // in rps just over give a buffer so we can PID up to velocityMaxRPS, plus so we can reason separately about
                       // error-to-drive mapping, and safe operating limits.
 float velocityMaxRPS = 32; // 16rps is 960 rpm we can probably get to ~2500 rpm if we risk the bearings
-static float plantForVelocity[] = {-velocityMaxRPS,velocityMaxRPS}; //+/- 100% in the app
+float plantMaxDifference = 8;
+static float plantForVelocity[] = {-plantMaxDifference, plantMaxDifference}; //+/- 100% in the app
 static float driveForVelocity[] = {-1,1}; // max 50% drive
 static int sizeVelocity = 2;
 Driver driverVelocity = Driver(plantForVelocity, driveForVelocity, sizeVelocity);
-float velocityPrimaryOffsetPos = 0.48; //set in setup()
-float velocityPrimaryOffsetNeg = -0.48;  //set in setup()
+float velocityPrimaryOffsetPos = 0.0525; //set in setup()
+float velocityPrimaryOffsetNeg = -0.0525;  //set in setup()
 
 
 // Timer - to switch off motor at end of a run
@@ -124,6 +131,10 @@ const float positionPlantMax = 5;
 const float positionLimitMin  = -2; // limits for state to enforce
 const float positionLimitMax = 2;
 
+volatile int velocityLimitCount = 0;
+volatile int positionLimitCount = 0;
+const int velocityLimitCountThreshold = 10;
+const int positionLimitCountThreshold = 10;
 
 volatile float velocity_angular_velocity = 0; //for velocity mode velocity reporting
 unsigned long velocity_current_time_encoder = 0;
@@ -209,7 +220,7 @@ bool isNewTs = false;
 bool isNewN = false;
 
 // SMStateChangeDCMotor
-float motorMaxCommand = 12.0; //external world units are 0 to +/-12V
+float motorMaxCommand = 10.0; //external world units are 0 to +/-12V
 float motorMinCommand = 0.0; //we're not actually using this yet ....
 float motorChangeCommand = 0;
 float motorCommand = 0;
@@ -452,6 +463,8 @@ void stateMotorBefore(void) {
   state = STATE_MOTOR_DURING;
 
   lastCommandMillis = millis();
+
+  velocityLimitCount = 0;
   
   motorChangeCommand = 0; 
   motorCommand = 0; //start with motor off
@@ -473,11 +486,17 @@ void stateMotorDuring(void) {
   }
 
   if (abs(disk.getVelocity()) > velocityLimit) {
+	velocityLimitCount++;
+  } else {
+	velocityLimitCount = 0;
+  }
+
+  if (velocityLimitCount > velocityLimitCountThreshold) {
 	state = STATE_MOTOR_AFTER;
 	Serial.println("{\"error\":\"velocity limit exceeded\"}");
 	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
-
   }
+ 
   
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
 	Serial.println("{\"warn\":\"maximum run time exceeded\"}");
@@ -546,6 +565,8 @@ void stateVelocityBefore(void) {
   state = STATE_VELOCITY_DURING;
 
   lastCommandMillis = millis();
+
+  velocityLimitCount = 0;
   
   velocityChangeCommand = 0;
 
@@ -605,11 +626,18 @@ void stateVelocityDuring(void) {
     doReport = false; //clear flag so can run again later
   }
 
-  if (abs(v) > velocityLimit) {
-	state = STATE_POSITION_AFTER;
+  if (abs(disk.getVelocity()) > velocityLimit) {
+	velocityLimitCount++;
+  } else {
+	velocityLimitCount = 0;
+  }
+
+  if (velocityLimitCount > velocityLimitCountThreshold) {
+	state = STATE_MOTOR_AFTER;
 	Serial.println("{\"error\":\"velocity limit exceeded\"}");
 	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
+  
   
   // It's ok to wait in a state a long time if we are NOT using the motor
   if (!cmpf(controller.getCommand(),0, velocityEpsilon)) {
@@ -624,6 +652,8 @@ void stateVelocityDuring(void) {
 void stateVelocityChangeCommand(void) {
 
   state = STATE_VELOCITY_DURING;
+
+  lastCommandMillis = millis();
 
   if (abs(velocityChangeCommand) <= velocityCommandMax) {
 	controller.setCommand(velocityChangeCommand);
@@ -665,6 +695,9 @@ void statePositionBefore(void) {
   state = STATE_POSITION_BEFORE;
 
   lastCommandMillis = millis();
+
+  velocityLimitCount = 0;
+  positionLimitCount = 0;
 
   float p = disk.getDisplacement();
 
@@ -753,15 +786,30 @@ void statePositionDuring(void) {
 
   // Disk can go unstable, and oscillate over a large amplitude - prevent!
   if (p > positionLimitMax || p < positionLimitMin ) {
+	positionLimitCount++;
+  } else {
+	positionLimitCount = 0;
+  }
+  
+  if (positionLimitCount > positionLimitCountThreshold)  {
 	state = STATE_POSITION_AFTER;
 	Serial.println("{\"error\":\"position limit exceeded\"}");
 	Serial.println("{​\"error\":\"limit\",\"type\":\"position\",\"state\":\"stopping\"}");
   }
-  if (abs(v) > velocityLimit) {
-	state = STATE_POSITION_AFTER;
+
+
+  if (abs(disk.getVelocity()) > velocityLimit) {
+	velocityLimitCount++;
+  } else {
+	velocityLimitCount = 0;
+  }
+
+  if (velocityLimitCount > velocityLimitCountThreshold) {
+	state = STATE_MOTOR_AFTER;
 	Serial.println("{\"error\":\"velocity limit exceeded\"}");
 	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
+  
   // Disk can sometimes oscillate, so shutdown on timeout.
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
 	Serial.println("{\"info\":\"maximum run time exceeded\"}");
@@ -858,7 +906,9 @@ void counterB(void) {
 //===================================================================================
 
 void setup() {
-
+  if (permitOverspeed) {
+	velocityLimit *=100;
+  }
 
   attachInterrupt(digitalPinToInterrupt(encoderPinA), counterA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB), counterB, CHANGE);
