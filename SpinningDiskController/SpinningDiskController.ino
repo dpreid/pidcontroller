@@ -44,6 +44,8 @@ float N = 5;
 float uMin = -1;
 float uMax = +1;
 
+float positionPIDScaleFactor = 1/2.35; //divide by 2.35
+
 PID controller = PID(Kp,Ki,Kd,Ts,N,uMin,uMax);
 
 const float KpMin = 0;
@@ -84,7 +86,7 @@ float motorPrimaryOffsetPos = 0; //set in setup()
 float motorPrimaryOffsetNeg = 0; //set in setup()
 
 // POSITION
-static float plantForPosition[] = {-1,+1; //was 1 
+static float plantForPosition[] = {-1,+1}; //was 1 
 static float driveForPosition[] = {-1,1}; // max 50% drive
 static int sizePosition = 2;
 Driver driverPosition = Driver(plantForPosition, driveForPosition, sizePosition);
@@ -712,6 +714,9 @@ void statePositionBefore(void) {
 
 	report_integer = reportPosition;
 
+	//scale Kp during position mode
+	controller.setKp(controller.getKp() * positionPIDScaleFactor);
+
 	state = STATE_POSITION_DURING;
 	
 	if (debug) Serial.println("Disk zeroed");
@@ -844,7 +849,18 @@ void statePositionChangeParameters(void) {
 
   lastCommandMillis = millis();
 
+  bool adjustKp = isNewKp;
+  
   changePIDCoefficients();
+
+  // scale Kp during position mode - only rescale if a new Kp has been set
+  // or else we'll change a number that should not change
+  // must scale after calling changePIDCoeffficients so that the
+  // unscaled value is reported
+  
+  if (adjustKp) {
+	controller.setKp(controller.getKp() * positionPIDScaleFactor);
+  }
 
 }
 
@@ -852,6 +868,9 @@ void statePositionChangeParameters(void) {
 void statePositionAfter(void) {
 
   state = STATE_STOPPING_BEFORE;
+
+  // return to non-scaled Kp
+  controller.setKp(controller.getKp() / positionPIDScaleFactor);
 
   // TODO set motor drive to zero
   
