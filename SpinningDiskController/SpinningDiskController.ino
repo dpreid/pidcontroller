@@ -556,7 +556,7 @@ void stateMotorAfter(void) {
   motor.brake(); 
   motorDriveVolts = 0;
   
-  if (debug) Serial.print("{\"state\":\"MotorAfter\"}");
+  if (debug) Serial.println("{\"state\":\"MotorAfter\"}");
 }
 
 
@@ -659,7 +659,7 @@ void stateVelocityChangeCommand(void) {
 	controller.setCommand(velocityChangeCommand);
 	Serial.print("{\"info\":\"new velocity command\",\"c\":\"");
 	Serial.print(velocityToExternalUnits(controller.getCommand()));
-	Serial.print("\"}"); 
+	Serial.println("\"}"); 
   } else {
 	Serial.println("{\"error\":\"cannot command velocity outside range\"}");
 	Serial.println("{​\"error\":\"command\",\"type\":\"limit\",\"state\":\"velocity\"}");
@@ -831,7 +831,7 @@ void statePositionChangeCommand(void) {
     controller.setCommand(positionChangeCommand);
 	Serial.print("{\"info\":\"new position command\",\"c\":\"");
 	Serial.print(positionToExternalUnits(controller.getCommand()));
-	Serial.print("\"}"); 
+	Serial.println("\"}"); 
   } else {
     Serial.println("{\"error\":\"cannot command position outside range\"}");
 	Serial.println("{​\"error\":\"command\",\"type\":\"limit\",\"state\":\"position\"}");
