@@ -44,7 +44,7 @@ float N = 5;
 float uMin = -1;
 float uMax = +1;
 
-float positionPIDScaleFactor = 0.42553191489;
+float positionPIDScaleFactor = 0.4124;
 
 PID controller = PID(Kp,Ki,Kd,Ts,N,uMin,uMax);
 
