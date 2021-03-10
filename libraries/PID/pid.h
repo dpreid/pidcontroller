@@ -14,22 +14,22 @@
 
 class PID {
 
-  double e2, e1, e0, u2, u1, u0;  // variables used in PID computation
-  double a0, a1, a2, b0, b1, b2;  // coefficients 
-  double ku1, ku2, ke0, ke1, ke2; // coefficients 
+  volatile double e2, e1, e0, u2, u1, u0;  // variables used in PID computation
+  volatile double a0, a1, a2, b0, b1, b2;  // coefficients 
+  volatile double ku1, ku2, ke0, ke1, ke2; // coefficients 
   
-  double r; // current command (desired plant output)
+  volatile float r; // current command (desired plant output)
 
   // These parameters are user-adjustable
   // Derived parameters in difference equation must be recalculated
   // when these are changed.
 
-  double _Kp;    // proportional gain
-  double _Ki;    // integral gain
-  double _Kd;    //  derivative gain
-  double _N;     // filter coefficients e.g. 20
-  double _Ts;   // This must match actual sampling time PID, in seconds e.g. 0.02 for 50Hz
-  double _uMin, _uMax; //plant limits
+  volatile float Kp_;    // proportional gain
+  volatile float Ki_;    // integral gain
+  volatile float Kd_;    //  derivative gain
+  volatile float N_;     // filter coefficients e.g. 20
+  volatile float Ts_;   // This must match actual sampling time PID, in seconds e.g. 0.02 for 50Hz
+  volatile float uMin_, uMax_; //plant limits
   
   void reset(void); // set* commands will call this whenever any changes warrant it
   
@@ -52,6 +52,8 @@ class PID {
   float getUMin(void);
   bool hasZeroHistory(void); //helper for testing
   void setCommand(float command); //r is desired plant output
+  float getCommand(void);
+  float getError(void); 
   float update(float y);     //y is actual plant output
   
 };
