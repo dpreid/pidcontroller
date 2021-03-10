@@ -20,7 +20,7 @@ MotorHB3SAMD21::MotorHB3SAMD21(int directionPin, int enablePin, int offset, long
   enable = enablePin;
   Offset = offset;
   
-  prev_speed = 0;
+  prevSpeed = 0;
   
   pinMode(direction, OUTPUT);
   pinMode(enable, OUTPUT);
@@ -29,8 +29,8 @@ MotorHB3SAMD21::MotorHB3SAMD21(int directionPin, int enablePin, int offset, long
   servo.setClockDivider(1, false);  // Input clock is divided by 1 and 48MHz is sent to Generic Clock, Turbo is off
   servo.timer(0, 1, prescale, true); //timer0 for pin6 https://github.com/ocrdu/Arduino_SAMD21_turbo_PWM, was 960000 for 48MHz/960000=50Hz
 
-  servoMinTime = 0;
-  servoMaxTime = 20000;
+  minSpeed = 0;
+  maxSpeed = MAX_ABS_SPEED;
     
 }
 
@@ -38,51 +38,53 @@ void MotorHB3SAMD21::setPrescale(long prescale) {
   servo.timer(0, 1, prescale, true);
 }
 
-void MotorHB3SAMD21::setMinTime(int time) {
-  servoMinTime = time;
-}
 
-void MotorHB3SAMD21::setMaxTime(int time) {
-  servoMaxTime = time;
-}
-
-void MotorHB3SAMD21::pwm(int speed) {
-
-  //convert speed to microseconds 0 -> servoMinTime, 255 -> servoMaxTime
+unsigned int MotorHB3SAMD21::speedToDuty(float speed) {
   
-  int microSeconds = servoMinTime + (abs(speed) * (servoMaxTime-servoMinTime) / 255);
-  //float time_range = servoMaxTime-servoMinTime;
-  //float time_added = relative_speed * time_range;
-  //int microSeconds = int(time_added) + servoMinTime;
-  //int microSeconds = speed * 30;
-  servo.analogWrite(enable, microSeconds / 20); // 1sec/20 = 50Hz
+  // convert
+  // -1.0 <= speed <= +1.0
+  // to duty cycle unsigned int 0 - 1000 (0 - 100% in 0.1% steps?)
+  speed = abs(speed);
+  
+  if (speed > 1) {
+	speed = 1.0;
+  }
+
+  speed = minSpeed + (speed * (maxSpeed - minSpeed));
+  
+  return (unsigned int) (1000.0f * speed);
+}
+
+void MotorHB3SAMD21::pwm(float speed) {
+    
+  servo.analogWrite(enable, speedToDuty(speed)); 
 
 }
 
-void MotorHB3SAMD21::drive(int speed)
+void MotorHB3SAMD21::drive(float speed)
 {
-  if(speed / prev_speed < 0) free();	//H bridge cannot have enable pin high when direction changes 
+  if(speed / prevSpeed < 0) free();	//H bridge cannot have enable pin high when direction changes 
 
   speed = speed * Offset;
   if (speed>=0) fwd(speed);
   else rev(-speed);
   
-  prev_speed = speed;
+  prevSpeed = speed;
 }
 
-void MotorHB3SAMD21::drive(int speed, int duration)
+void MotorHB3SAMD21::drive(float speed, int duration)
 {
   drive(speed);
   delay(duration);
 }
 
-void MotorHB3SAMD21::fwd(int speed)
+void MotorHB3SAMD21::fwd(float speed)
 {
    digitalWrite(direction, LOW);
    pwm(speed);
 }
 
-void MotorHB3SAMD21::rev(int speed)
+void MotorHB3SAMD21::rev(float speed)
 {
    digitalWrite(direction, HIGH);
    pwm(speed);

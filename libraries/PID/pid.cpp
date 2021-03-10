@@ -8,13 +8,13 @@ void PID::setAll(float Kp, float Ki, float Kd, float Ts, float N, float uMin, fl
 
   reset();
 
-  _Kp = Kp;
-  _Ki = Ki;
-  _Kd = Kd;
-  _Ts = Ts;
-  _N = N;
-  _uMin = uMin;
-  _uMax = uMax;
+  Kp_ = Kp;
+  Ki_ = Ki;
+  Kd_ = Kd;
+  Ts_ = Ts;
+  N_ = N;
+  uMin_ = uMin;
+  uMax_ = uMax;
 
   a0 = (1+N*Ts);
   a1 = -(2 + N*Ts);
@@ -43,6 +43,14 @@ void PID::setCommand(float command) {
   r = command;
 }
 
+float PID::getCommand(void) {
+  return r;
+}
+
+float PID::getError(void) {
+  return e0;
+}
+
 float PID::update(float y){
 
   // shift history
@@ -54,72 +62,72 @@ float PID::update(float y){
   e0=r-y; //compute new error
 
   // https://en.wikipedia.org/wiki/Integral_windup
-  if ( (e0 * e1) <= 0) { //reset integrator on zero crossing
-	u1 = 0;
-	u2 = 0;
-  }
+  //if ( (e0 * e1) <= 0) { //reset integrator on zero crossing
+  //	u1 = 0;
+  //	u2 = 0;
+	//}
   
   u0 = -ku1*u1 - ku2*u2 + ke0*e0 + ke1*e1 + ke2*e2; //eq(12)
 
-  if (u0 > _uMax) u0 = _uMax; //limit to plant range
-  if (u0 < _uMin) u0 = _uMin;
+  //if (u0 > uMax_) u0 = uMax_; //limit to plant range
+  //if (u0 < uMin_) u0 = uMin_;
 
   return u0;
 
 }
 
 void PID::setKs(float Kp, float Ki, float Kd) {
-  setAll(Kp, Ki, Kd, _Ts, _N, _uMin, _uMax);
+  setAll(Kp, Ki, Kd, Ts_, N_, uMin_, uMax_);
 }
 
 void PID::setKp(float Kp) {
-  setAll(Kp, _Ki, _Kd, _Ts, _N, _uMin, _uMax);
+  setAll(Kp, Ki_, Kd_, Ts_, N_, uMin_, uMax_);
 }
 
 void PID::setKi(float Ki) {
-  setAll(_Kp, Ki, _Kd, _Ts, _N, _uMin, _uMax);
+  setAll(Kp_, Ki, Kd_, Ts_, N_, uMin_, uMax_);
 }
 
 void PID::setKd(float Kd) {
-  setAll(_Kp, _Ki, Kd, _Ts, _N, _uMin, _uMax);
+  setAll(Kp_, Ki_, Kd, Ts_, N_, uMin_, uMax_);
 }
 
 void PID::setTs(float Ts) {
-  setAll(_Kp, _Ki, _Kd, Ts, _N, _uMin, _uMax);
+  setAll(Kp_, Ki_, Kd_, Ts, N_, uMin_, uMax_);
 }
 
 void PID::setN(float N) {
-  setAll(_Kp, _Ki, _Kd, _Ts, N, _uMin, _uMax);
+  setAll(Kp_, Ki_, Kd_, Ts_, N, uMin_, uMax_);
 }
 
 void PID::setLimits(float uMin, float uMax) {
-  setAll(_Kp, _Ki, _Kd, _Ts, _N, uMin, uMax);
+  setAll(Kp_, Ki_, Kd_, Ts_, N_, uMin, uMax);
 }
 
 float PID::getKp(void) {
-  return _Kp;
+  return Kp_;
 }
 float PID::getKi(void){
-  return _Ki;
+  return Ki_;
 }
 
 float PID::getKd(void) {
-  return _Kd;
+  return Kd_;
 }
 
 float PID::getTs(void){
-  return _Ts;
+  return Ts_;
 }
 float PID::getN(void) {
-  return _N;
+  return N_;
 }
 
 float PID::getUMax(void) {
-  return _uMax;
+  return uMax_;
 }
 
 float PID::getUMin(void) {
-  return _uMin;
+  return uMin_;
 }
 
 bool PID::hasZeroHistory(void){
