@@ -779,14 +779,18 @@ void statePositionReady(void) {
 
   state = STATE_POSITION_READY;
 
-  // this is a deliberately empty state
+  // this state just reports the current position
   
   // the PID coefficients can be updated at will
   // before starting the run.
 
   // do NOT update the PID controller in this state
   // so we keep zero'd history until we go to DURING
-
+  
+  if (doReport) { //flag set in interrupt routine
+	report();
+	doReport = false; //clear flag so can run again later
+  }
 }
 
 void statePositionDuring(void) {
