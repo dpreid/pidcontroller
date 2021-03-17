@@ -274,6 +274,8 @@ typedef enum
   STATE_VELOCITY_CHANGE_PARAMETERS,
   STATE_VELOCITY_AFTER,
   STATE_POSITION_BEFORE,
+  STATE_POSITION_WAITING,
+  STATE_POSITION_READY,
   STATE_POSITION_DURING, 
   STATE_POSITION_CHANGE_COMMAND,
   STATE_POSITION_CHANGE_PARAMETERS,
@@ -297,6 +299,8 @@ void stateVelocityChangeCommand(void);
 void stateVelocityChangeParameters(void);
 void stateVelocityAfter(void);
 void statePositionBefore(void);
+void statePositionWaiting(void);
+void statePositionReady(void);
 void statePositionDuring(void);
 void statePositionChangeCommand(void);
 void statePositionChangeParameters(void);
@@ -327,19 +331,21 @@ StateMachineType StateMachine[] =
   {STATE_MOTOR_CHANGE_COMMAND,       stateMotorChangeCommand},
   {STATE_MOTOR_CHANGE_PARAMETERS,    stateMotorChangeParameters},
   {STATE_MOTOR_AFTER,                stateMotorAfter},
-  {STATE_VELOCITY_BEFORE,               stateVelocityBefore},
-  {STATE_VELOCITY_DURING,               stateVelocityDuring},
-  {STATE_VELOCITY_CHANGE_COMMAND,       stateVelocityChangeCommand},
-  {STATE_VELOCITY_CHANGE_PARAMETERS,    stateVelocityChangeParameters},
-  {STATE_VELOCITY_AFTER,                stateVelocityAfter},
+  {STATE_VELOCITY_BEFORE,            stateVelocityBefore},
+  {STATE_VELOCITY_DURING,            stateVelocityDuring},
+  {STATE_VELOCITY_CHANGE_COMMAND,    stateVelocityChangeCommand},
+  {STATE_VELOCITY_CHANGE_PARAMETERS, stateVelocityChangeParameters},
+  {STATE_VELOCITY_AFTER,             stateVelocityAfter},
   {STATE_POSITION_BEFORE,            statePositionBefore},
+  {STATE_POSITION_WAITING,           statePositionWaiting},
+  {STATE_POSITION_READY,             statePositionReady},  
   {STATE_POSITION_DURING,            statePositionDuring},
   {STATE_POSITION_CHANGE_COMMAND,    statePositionChangeCommand},
   {STATE_POSITION_CHANGE_PARAMETERS, statePositionChangeParameters},
   {STATE_POSITION_AFTER,             statePositionAfter},
 };
 
-int numStates = 19;
+int numStates = 21;
 
 /**
  * Stores the current state of the state machine
@@ -373,6 +379,13 @@ StateType state = STATE_STOPPED;    //START IN THE STOPPED STATE
 // 
 //  The default NEXT state is set in the first line of each state,
 //  then overridden if need be.
+//
+//  An exception to this convention are the additional STATE_POSITION_WAITING,
+//  and STATE_POSITION_READY, which are intended to let you set the PID parameters
+//  before running the PID control routine, so that users can recover from setting
+//  large integral coefficients, which cause an automatic stop for going out
+//  of bounds before a lower PID value can be set. On entering position PID mode
+//  the before state zeroes, the disk, then passes to the READY state.
 //
 //============================================================================
 
@@ -690,7 +703,7 @@ void statePositionBefore(void) {
 	//scale Kp during position mode
 	controller.setKp(controller.getKp() * positionPIDScaleFactor);
 
-	state = STATE_POSITION_DURING;
+	state = STATE_POSITION_READY; // go to the READY state to await command or parameter change
 	
 	if (debug) Serial.println("Disk zeroed");
 	
@@ -709,6 +722,72 @@ void statePositionBefore(void) {
 
 }
 
+
+void statePositionWaiting(void) {
+
+  state = STATE_POSITION_WAITING;
+
+  // since we from DURING,where the disk can be spinning,
+  // we need to duplicate some commands from the stopping and before states
+  // to ensure the disk is stopped and zero'd. We don't want to just use the
+  // before state, because this one-shot setup (like adjusting the Kp value)
+  // which cannot be done more than once per entry into the mode.
+  // So we do the disk stopping we need here.
+   
+  motor.brake(); //This is just free-wheeling, so needs no further commands.
+  motorDriveVolts = 0;
+
+  lastCommandMillis = millis();
+
+  velocityLimitCount = 0;
+  positionLimitCount = 0;
+
+  float p = disk.getDisplacement();
+
+  if ( abs(p) <= positionEpsilon) { //disk is zero'd enough
+
+	requestZeroPosition = false;
+
+	controller.setLimits(positionPlantMin, positionPlantMax);
+
+	// zero the commanded value (which wipes the error history)
+	positionChangeCommand = 0;
+	controller.setCommand(positionChangeCommand);
+
+	report_integer = reportPosition;
+
+	state = STATE_POSITION_READY;
+	
+	if (debug) Serial.println("Disk zeroed");
+	
+  } else {
+
+	requestZeroPosition = true;
+
+	if (debug) {
+	  requestSerial();
+	  Serial.print("Disk not zeroed, p = ");
+	  Serial.println(p);
+	  releaseSerial();
+	}
+  
+  }
+
+}
+
+void statePositionReady(void) {
+
+  state = STATE_POSITION_READY;
+
+  // this is a deliberately empty state
+  
+  // the PID coefficients can be updated at will
+  // before starting the run.
+
+  // do NOT update the PID controller in this state
+  // so we keep zero'd history until we go to DURING
+
+}
 
 void statePositionDuring(void) {
 
@@ -800,7 +879,7 @@ void statePositionDuring(void) {
 
 void statePositionChangeCommand(void) {
 
-  state = STATE_POSITION_DURING;
+  state = STATE_POSITION_DURING; //start the PID controller next, by going to DURING state
 
   lastCommandMillis = millis();
   
@@ -818,7 +897,7 @@ void statePositionChangeCommand(void) {
 
 void statePositionChangeParameters(void) {
 
-  state = STATE_POSITION_DURING; //default next state
+  state = STATE_POSITION_READY; // we can only set params in the ready state, so return there
 
   lastCommandMillis = millis();
 
@@ -1150,7 +1229,7 @@ StateType readSerialJSON(StateType state) {
       }
 
 	} else if(strcmp(set, "position")==0) {
-      if(state == STATE_POSITION_DURING) {
+      if(state == STATE_POSITION_READY) {
         state = STATE_POSITION_CHANGE_COMMAND;
         positionChangeCommand = positionFromExternalUnits(doc["to"]);
       } else {
@@ -1226,7 +1305,7 @@ StateType readSerialJSON(StateType state) {
       }	  
 
       if (isNewKp || isNewKi || isNewKd || isNewTs || isNewN) {
-        if ( state == STATE_POSITION_DURING) {
+        if ( state == STATE_POSITION_READY) {
           state = STATE_POSITION_CHANGE_PARAMETERS;
         } else if (state == STATE_VELOCITY_DURING) {
           state = STATE_VELOCITY_CHANGE_PARAMETERS;
