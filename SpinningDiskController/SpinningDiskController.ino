@@ -20,9 +20,6 @@ bool debug = false;
 bool trace = false;
 bool permitOverspeed = false;
 
-// enable on-the-fly setting of additional tuning parameters
-bool development = true;
-
 //=============================================================
 
 /********** HEADERS ******************/
