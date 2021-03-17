@@ -244,33 +244,9 @@ float velocityCommandMax = +200; //rps
 // Function Prototypes
 //=============================================================
 
-
-bool stopPIDVelocity(void);
-bool stopRawVelocity(void);
-bool stopPIDPosition(void);
 void newShutdownTimer(float time);
-void doEncoderAPosition();
-void doEncoderAVelocity();
-void doEncoderBPosition();
-void encoderWrap(void);
 bool inRange(float val, float min, float max);
 void changePIDCoefficients(void);
-void resetPIDSignal(void);
-void calculateVelocityPID(void);
-void calculatePositionPID(void);
-float lowpass_filter(float input, float previous_output);
-float deadband(float input, float band);
-float friction_compensation_static(float drive_signal, float encoderAngVel, float error);
-float friction_compensation_dynamic(float drive_signal, float encoderAngVel, float error);
-void updateDrivePosition(void);
-void updateDriveVelocity(void);
-float limitDrivePosition(float drive);
-float limitDriveVelocity(float drive);
-float limit(float val, float min, float max);
-float addFC(float drive);
-void calculatePID(void);
-void maybeCalculatePID(void);
-void maybeReport(void);
 void startTimer(int frequencyHz);
 void setTimerFrequencyHz(int frequencyHz);
 void requestSerial(void);
