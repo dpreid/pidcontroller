@@ -770,7 +770,12 @@ void statePositionWaiting(void) {
 	  Serial.println(p);
 	  releaseSerial();
 	}
-  
+	
+    if (doReport) { //flag set in interrupt routine
+	report();
+	doReport = false; //clear flag so can run again later
+	}
+	
   }
 
 }
