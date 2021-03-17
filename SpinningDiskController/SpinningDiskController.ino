@@ -1238,7 +1238,7 @@ StateType readSerialJSON(StateType state) {
       }
 
 	} else if(strcmp(set, "position")==0) {
-      if(state == STATE_POSITION_READY) {
+      if(state == STATE_POSITION_READY || state == STATE_POSITION_DURING) {
         state = STATE_POSITION_CHANGE_COMMAND;
         positionChangeCommand = positionFromExternalUnits(doc["to"]);
       } else {
