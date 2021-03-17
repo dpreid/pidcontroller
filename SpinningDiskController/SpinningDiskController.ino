@@ -1275,6 +1275,11 @@ StateType readSerialJSON(StateType state) {
         if(strcmp(new_mode, "stop") == 0) {
           state = STATE_STOPPING_BEFORE;
         }
+        if(strcmp(new_mode, "wait") == 0) {
+		  if ( state == STATE_POSITION_DURING ) {
+          state = STATE_POSITION_WAITING;
+		  }
+        }		
       }
 
     } else if(strcmp(set, "parameters")==0 || strcmp(set, "p")==0 ) {
