@@ -113,6 +113,15 @@ float lastCommandMillis = 0;
 float longestShutdownTimeMillis = 180 * 1000;
 float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 
+// ARRAYS for storing data at larger time resolution
+//Only currently doing time, displacement, velocity and motorDrive.
+
+float[] t_array = new float[4]; //time
+float[] d_array = new float[4]; //position displacement
+float[] v_array = new float[4]; //velocity
+float[] y_array = new float[4]; //motorDrive
+
+
 
 /****** ENCODER *******/
 
@@ -1554,25 +1563,33 @@ void report(void)
 	}
 
   }
+  //===================================
   //API version 1 - sending data every 20ms but with an array of values calculated every 5ms.=========================
+  //=====================================
   else 
   {
+    //every 5ms (when report is called) add the next set of data to each array.
+    d_array[reportCount] = positionToExternalUnits(disk.getDisplacement());
+    v_array[reportCount] = velocityToExternalUnits(disk.getVelocity());
+    t_array[reportCount] = millis();
+    y_array[reportCount] = motorDriveVolts;
+    
     reportCount ++;
 
-    //every 5ms (when report is called) add the next set of data to each array.
+  
 
   if ( reportCount  == 4 ) { //only send data every 20ms - now as an array of 4 data points
 
     reportCount = 0;
     
     Serial.print("{\"d\":");
-    Serial.print(positionToExternalUnits(disk.getDisplacement()));
+    Serial.print(d_array);
     Serial.print(",\"v\":");
-    Serial.print(velocityToExternalUnits(disk.getVelocity()));
+    Serial.print(v_array);
     Serial.print(",\"t\":");
-    Serial.print(millis());
+    Serial.print(t_array);
     Serial.print(",\"y\":");
-    Serial.print(motorDriveVolts);
+    Serial.print(y_array);
     
     if (state == STATE_POSITION_DURING) {
     
@@ -1612,7 +1629,8 @@ void report(void)
     
     
     Serial.println("}");
-  }reportCount ++;
+  }
+  
   }
   
   releaseSerial();
