@@ -9,6 +9,7 @@
  *
  * Modifed by Tim Drysdale Feb 2021
  *
+ *Modified by David Reid Sep 2021
  */
 
 
@@ -26,7 +27,8 @@ bool permitOverspeed = false;
 #include "ArduinoJson-v6.9.1.h"
 #include <dcmotor.h>
 #include <Encoder.h>
-#include <MotorControllerBTS7960.h>
+//#include <MotorControllerBTS7960.h>
+#include <MotorControllerBTN8982.h>
 #include <pid.h>
 #include <rotaryPlant.h>
 
@@ -41,7 +43,8 @@ float N = 5;
 float uMin = -1;
 float uMax = +1;
 
-float positionPIDScaleFactor = 0.4124;
+//float positionPIDScaleFactor = 0.4124;
+float positionPIDScaleFactor = 1.0;
 
 PID controller = PID(Kp,Ki,Kd,Ts,N,uMin,uMax);
 
@@ -60,17 +63,17 @@ const float TsMax = 0.100; //100 milliseconds
 
 // Pins connecting to drive board
 #define AIN1 5 //old DIRECTION
-#define enablePin  6 //old PWMA ENABLE
-#define leftPWMPin 4
-#define rightPWMPin 7
+#define enablePin  8 //old PWMA ENABLE
+#define leftPWMPin 10
+#define rightPWMPin 9
 
 const int direction = 1; // If motor spins in the opposite direction then you can change this to -1.
 
 // MotorBTS7960(int PWMA, int leftPWMPin, int rightPWMPin, int timerNumber, int offset, long prescale)
 //timer0 for pin6, timer1 for 4&7 https://github.com/ocrdu/Arduino_SAMD21_turbo_PWM, was 960000 for 48MHz/960000=50Hz
-MotorBTS7960 motor = MotorBTS7960(enablePin, leftPWMPin, rightPWMPin, 1, direction, 24000); // 2 kHz
+//MotorBTS7960 motor = MotorBTS7960(enablePin, leftPWMPin, rightPWMPin, 1, direction, 24000); // 2 kHz
 //96000 for 500Hz, 120000 for 400Hz, 240000 for 200Hz PWM, 480000 for 100Hz PWM, 960000 for 50Hz
-
+MotorBTN8982 motor = MotorBTN8982(enablePin, leftPWMPin, rightPWMPin, 1, 12);
 
 /******* Drive signals ********/
 
@@ -113,9 +116,9 @@ float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 
 /****** ENCODER *******/
 
-#define encoderPinA 3     //these pins all have interrupts on them.
-#define encoderPinB 2
-#define indexPin 11
+#define encoderPinA 2     //these pins all have interrupts on them.
+#define encoderPinB 3
+#define indexPin 4
 
 const float encoderPPR = 2000;
 const float LPFCoefficient = 0.9;
@@ -210,7 +213,7 @@ int awaitingStopNeeded = 100;  //number of loops with the same encoder position 
 float newKp = 1.0;
 float newKi = 0.0;
 float newKd = 0.0;
-float newTs = 10;
+float newTs = 0.005;
 float newN = 2;
 bool isNewKp = false;
 bool isNewKi = false;
@@ -507,11 +510,12 @@ void stateMotorChangeCommand(void) {
 	
     motorCommand = motorChangeCommand; //leave unchanged if outside range
 
-	float yp = driverMotor.drive(motorCommand, 0.0);
+	//float yp = driverMotor.drive(motorCommand, 0.0);
 	
-	motor.drive(yp); //driverMotors handles conversion from +/-100% to +/-1.0
+	motor.drive(motorChangeCommand); 
 	
-	motorDriveVolts = yp * motorMaxVolts;
+	//motorDriveVolts = yp * motorMaxVolts;
+ motorDriveVolts = motorChangeCommand;
 	
 	if (debug) {
 	  Serial.print("Changed motorCommand to ");
@@ -818,10 +822,10 @@ void statePositionDuring(void) {
 	
 	y = controller.update(p);
 
-	yp = driverPosition.drive(y,v);
+	//yp = driverPosition.drive(y,v);
 	
-	motor.drive(yp);
-	motorDriveVolts = yp * motorMaxVolts;
+	motor.drive(positionToExternalUnits(y));
+	motorDriveVolts = positionToExternalUnits(y);
   }
 
   if (doReport) { //flag set in interrupt routine
@@ -1549,6 +1553,66 @@ void report(void)
 	  Serial.println("}");
 	}
 
+  }
+  //API version 1 - sending data every 20ms but with an array of values calculated every 5ms.=========================
+  else 
+  {
+    reportCount ++;
+
+    //every 5ms (when report is called) add the next set of data to each array.
+
+  if ( reportCount  == 4 ) { //only send data every 20ms - now as an array of 4 data points
+
+    reportCount = 0;
+    
+    Serial.print("{\"d\":");
+    Serial.print(positionToExternalUnits(disk.getDisplacement()));
+    Serial.print(",\"v\":");
+    Serial.print(velocityToExternalUnits(disk.getVelocity()));
+    Serial.print(",\"t\":");
+    Serial.print(millis());
+    Serial.print(",\"y\":");
+    Serial.print(motorDriveVolts);
+    
+    if (state == STATE_POSITION_DURING) {
+    
+    Serial.print(",\"c\":");
+    Serial.print(positionToExternalUnits(controller.getCommand()));
+    Serial.print(",\"p_sig\":");
+    Serial.print(positionToExternalUnits(controller.getError()));
+    Serial.print(",\"i_sig\":0,\"d_sig\":0");
+    Serial.print(",\"e\":");
+    Serial.print(positionToExternalUnits(controller.getError()));   
+    Serial.print(",\"m\":\"p\"");
+    Serial.print(",\"y\":");
+    Serial.print(motorDriveVolts);
+           
+    
+    
+    } else if (state == STATE_VELOCITY_DURING) {
+    
+    Serial.print(",\"c\":");
+    Serial.print(velocityToExternalUnits(controller.getCommand()));
+    Serial.print(",\"p_sig\":");
+    Serial.print(velocityToExternalUnits(controller.getError()));
+    Serial.print(",\"i_sig\":0,\"d_sig\":0");
+    Serial.print(",\"e\":");
+    Serial.print(velocityToExternalUnits(controller.getError()));   
+    Serial.print(",\"m\":\"v\"");
+    Serial.print(",\"y\":");
+    Serial.print(motorDriveVolts);
+    } else if (state == STATE_MOTOR_DURING) {
+
+    Serial.print(",\"m\":\"m\"");
+    
+    } else {
+    
+    Serial.print(",\"m\":\"s\"");
+    }
+    
+    
+    Serial.println("}");
+  }reportCount ++;
   }
   
   releaseSerial();
