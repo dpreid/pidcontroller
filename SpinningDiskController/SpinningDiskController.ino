@@ -116,10 +116,10 @@ float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 // ARRAYS for storing data at larger time resolution
 //Only currently doing time, displacement, velocity and motorDrive.
 
-float[] t_array = new float[4]; //time
-float[] d_array = new float[4]; //position displacement
-float[] v_array = new float[4]; //velocity
-float[] y_array = new float[4]; //motorDrive
+float t_array[4]; //time
+float d_array[4]; //position displacement
+float v_array[4]; //velocity
+float y_array[4]; //motorDrive
 
 
 
@@ -206,7 +206,7 @@ int loop_count = 0; //check if needed?
 unsigned long dta; // moving average, needs right shifting by 3 bits to get correct value
 
 bool writing = false; //semaphore for coordinating writes to serial port
-int apiVersion = 0; //legacy version
+int apiVersion = 1; //0: legacy version, 1: increased time resolution by sending data array
 long reportCount = 0; //for legacy report frequency
 
 float motorDriveVolts = 0;
@@ -1582,14 +1582,42 @@ void report(void)
 
     reportCount = 0;
     
-    Serial.print("{\"d\":");
-    Serial.print(d_array);
-    Serial.print(",\"v\":");
-    Serial.print(v_array);
-    Serial.print(",\"t\":");
-    Serial.print(t_array);
-    Serial.print(",\"y\":");
-    Serial.print(y_array);
+    Serial.print("{\"d\":[");
+    Serial.print(d_array[0]);
+    Serial.print(",");
+    Serial.print(d_array[1]);
+    Serial.print(",");
+    Serial.print(d_array[2]);
+    Serial.print(",");
+    Serial.print(d_array[3]);
+    Serial.print("]");
+    Serial.print(",\"v\":[");
+    Serial.print(v_array[0]);
+    Serial.print(",");
+    Serial.print(v_array[1]);
+    Serial.print(",");
+    Serial.print(v_array[2]);
+    Serial.print(",");
+    Serial.print(v_array[3]);
+    Serial.print("]");
+    Serial.print(",\"t\":[");
+    Serial.print(t_array[0]);
+    Serial.print(",");
+    Serial.print(t_array[1]);
+    Serial.print(",");
+    Serial.print(t_array[2]);
+    Serial.print(",");
+    Serial.print(t_array[3]);
+    Serial.print("]");
+    Serial.print(",\"y\":[");
+    Serial.print(y_array[0]);
+    Serial.print(",");
+    Serial.print(y_array[1]);
+    Serial.print(",");
+    Serial.print(y_array[2]);
+    Serial.print(",");
+    Serial.print(y_array[3]);
+    Serial.print("]");
     
     if (state == STATE_POSITION_DURING) {
     
