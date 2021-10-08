@@ -114,12 +114,16 @@ float longestShutdownTimeMillis = 180 * 1000;
 float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 
 // ARRAYS for storing data at larger time resolution
-//Only currently doing time, displacement, velocity and motorDrive.
 
 float t_array[4]; //time
 float d_array[4]; //position displacement
 float v_array[4]; //velocity
 float y_array[4]; //motorDrive
+float c_array[4]; //command
+float e_array[4]; //pid error signal
+float p_sig_array[4];  //proportional signal
+float i_sig_array[4]; //integral signal
+float d_sig_array[4]; //derivative signal
 
 
 
@@ -591,10 +595,11 @@ void stateVelocityDuring(void) {
     
 	y = controller.update(v);
 
-	yp = driverVelocity.drive(y,v);
+//	yp = driverVelocity.drive(y,v);
+  yp = positionToExternalUnits(y);
 	
 	motor.drive(yp);
-	motorDriveVolts = yp * motorMaxVolts;
+  motorDriveVolts = yp;
   }
 
   if (doReport) { //flag set in interrupt routine
@@ -832,9 +837,10 @@ void statePositionDuring(void) {
 	y = controller.update(p);
 
 	//yp = driverPosition.drive(y,v);
+  yp = positionToExternalUnits(y);
 	
-	motor.drive(positionToExternalUnits(y));
-	motorDriveVolts = positionToExternalUnits(y);
+	motor.drive(yp);
+	motorDriveVolts = yp;
   }
 
   if (doReport) { //flag set in interrupt routine
@@ -1573,12 +1579,29 @@ void report(void)
     v_array[reportCount] = velocityToExternalUnits(disk.getVelocity());
     t_array[reportCount] = millis();
     y_array[reportCount] = motorDriveVolts;
+
+    if (state == STATE_POSITION_DURING) 
+    {
+      c_array[reportCount] = positionToExternalUnits(controller.getCommand());
+      e_array[reportCount] = positionToExternalUnits(controller.getError());
+    } 
+    else if(state == STATE_VELOCITY_DURING)
+    {
+      c_array[reportCount] = velocityToExternalUnits(controller.getCommand());
+      e_array[reportCount] = velocityToExternalUnits(controller.getError());
+    } 
+    else 
+    {
+      c_array[reportCount] = 0;
+      e_array[reportCount] = 0;
+    }
+    
     
     reportCount ++;
 
   
 
-  if ( reportCount  == 4 ) { //only send data every 20ms - now as an array of 4 data points
+  if ( reportCount  == 4 ) { //only send based upon mode, currently fixed to 4, but change to have different values for different modes based on report_integer.
 
     reportCount = 0;
     
@@ -1618,44 +1641,35 @@ void report(void)
     Serial.print(",");
     Serial.print(y_array[3]);
     Serial.print("]");
+    Serial.print(",\"c\":[");
+    Serial.print(c_array[0]);
+    Serial.print(",");
+    Serial.print(c_array[1]);
+    Serial.print(",");
+    Serial.print(c_array[2]);
+    Serial.print(",");
+    Serial.print(c_array[3]);
+    Serial.print("]");
+    Serial.print(",\"e\":[");
+    Serial.print(e_array[0]);
+    Serial.print(",");
+    Serial.print(e_array[1]);
+    Serial.print(",");
+    Serial.print(e_array[2]);
+    Serial.print(",");
+    Serial.print(e_array[3]);
+    Serial.print("]");  
+    Serial.print(",\"p_sig\":0,\"i_sig\":0,\"d_sig\":0");
     
     if (state == STATE_POSITION_DURING) {
-    
-    Serial.print(",\"c\":");
-    Serial.print(positionToExternalUnits(controller.getCommand()));
-    Serial.print(",\"p_sig\":");
-    Serial.print(positionToExternalUnits(controller.getError()));
-    Serial.print(",\"i_sig\":0,\"d_sig\":0");
-    Serial.print(",\"e\":");
-    Serial.print(positionToExternalUnits(controller.getError()));   
-    Serial.print(",\"m\":\"p\"");
-    Serial.print(",\"y\":");
-    Serial.print(motorDriveVolts);
-           
-    
-    
-    } else if (state == STATE_VELOCITY_DURING) {
-    
-    Serial.print(",\"c\":");
-    Serial.print(velocityToExternalUnits(controller.getCommand()));
-    Serial.print(",\"p_sig\":");
-    Serial.print(velocityToExternalUnits(controller.getError()));
-    Serial.print(",\"i_sig\":0,\"d_sig\":0");
-    Serial.print(",\"e\":");
-    Serial.print(velocityToExternalUnits(controller.getError()));   
-    Serial.print(",\"m\":\"v\"");
-    Serial.print(",\"y\":");
-    Serial.print(motorDriveVolts);
+      Serial.print(",\"m\":\"p\"");
+    } else if(state == STATE_VELOCITY_DURING) {
+      Serial.print(",\"m\":\"v\"");
     } else if (state == STATE_MOTOR_DURING) {
-
-    Serial.print(",\"m\":\"m\"");
-    
+      Serial.print(",\"m\":\"m\"");
     } else {
-    
-    Serial.print(",\"m\":\"s\"");
+      Serial.print(",\"m\":\"s\"");
     }
-    
-    
     Serial.println("}");
   }
   
