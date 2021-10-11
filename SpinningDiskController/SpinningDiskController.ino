@@ -251,6 +251,13 @@ float velocityChangeCommand = 0;
 float velocityCommandMin = -200; //rad/sec
 float velocityCommandMax = +200; //rps
 
+//NEW - INCLUSION OF RAMP FUNCTIONS
+bool isRamped = false;
+bool hasRampInitialised = false;
+unsigned long rampStartTime;    //time in ms
+float rampInitial;              //voltage, position or velocity in internal units
+float rampGradient;             //V/ms, rad/ms, rad/ms^2 -> converted to internal units 
+
 // TODO sort out normalisation of velocity command based on defined plant maximum
 // TODO consider linearising the drive to bring constant-gain regime down to slower
 // velocitys which are less stressful on the bearings due to the wobble
@@ -416,6 +423,9 @@ void stateStoppingBefore(void) {
 void stateStoppingDuring(void) {
 
   state = STATE_STOPPING_DURING; 
+
+  hasRampInitialised = false;         //NEW FOR RAMP FUNCTION +++++++++++++++++++++++++++++++++++++++++++++++++
+  isRamped = false;
 
   motor.brake(); //This is just free-wheeling, so needs no further commands.
   motorDriveVolts = 0;
@@ -819,6 +829,23 @@ void statePositionReady(void) {
 void statePositionDuring(void) {
 
   state = STATE_POSITION_DURING; 
+
+//New ramp mode
+//If in isRamped mode then position during should calculate the new command to send to the controller automatically - ie not reliant on user input.
+  if(isRamped){
+    if(!hasRampInitialised)   //when a new ramp command is sent to firmware this gets set to false
+    {
+      rampInitial = disk.getDisplacement();    //in internal units
+      rampStartTime = millis();
+      hasRampInitialised = true;
+    } 
+    else 
+    {
+      float rampValue = rampInitial + rampGradient*(millis() - rampStartTime);   //rampGradient needs to be in internal units / ms
+      controller.setCommand(rampValue); //automatically set controller command
+    }
+  }
+  //=======================================================================================
 
   float v, p, y, yp;
   float c, error, errp;
@@ -1260,11 +1287,23 @@ StateType readSerialJSON(StateType state) {
       if(state == STATE_POSITION_READY || state == STATE_POSITION_DURING) {
         state = STATE_POSITION_CHANGE_COMMAND;
         positionChangeCommand = positionFromExternalUnits(doc["to"]);
+        isRamped = false;                                                             //NEW+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
       } else {
         Serial.println("{\"error\":\"in wrong state to set position\"}");
       }
 
-	} else if(strcmp(set, "velocity")==0) {
+	} else if(strcmp(set, "position_ramp")==0) {
+      if(state == STATE_POSITION_READY || state == STATE_POSITION_DURING) {
+        state = STATE_POSITION_DURING;
+        isRamped = true;
+        hasRampInitialised = false;
+        rampGradient = positionFromExternalUnits(doc["to"])/1000.0;  //into internal position units / ms
+      } else {
+        Serial.println("{\"error\":\"in wrong state to set position\"}");
+      }
+
+ }
+	else if(strcmp(set, "velocity")==0) {
       if(state == STATE_VELOCITY_DURING) {
         state = STATE_VELOCITY_CHANGE_COMMAND;
         velocityChangeCommand = velocityFromExternalUnits(doc["to"]);
@@ -1301,7 +1340,8 @@ StateType readSerialJSON(StateType state) {
         }		
       }
 
-    } else if(strcmp(set, "parameters")==0 || strcmp(set, "p")==0 ) {
+    }
+    else if(strcmp(set, "parameters")==0 || strcmp(set, "p")==0 ) {
 
       if(!doc["kp"].isNull()) {
         newKp = doc["kp"];
