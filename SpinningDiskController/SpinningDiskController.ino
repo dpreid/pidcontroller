@@ -9,7 +9,7 @@
  *
  * Modifed by Tim Drysdale Feb 2021
  *
- *Modified by David Reid Sep 2021
+ *Modified by David Reid Sep 2021 - Updated for new motor and driver. Added array of data points every 5ms but sent every 20ms. Added ramp input.
  */
 
 
@@ -252,6 +252,7 @@ float velocityCommandMin = -200; //rad/sec
 float velocityCommandMax = +200; //rps
 
 //NEW - INCLUSION OF RAMP FUNCTIONS
+// same variables used for all modes - voltage, pid speed, pid position
 bool isRamped = false;
 bool hasRampInitialised = false;
 unsigned long rampStartTime;    //time in ms
@@ -492,7 +493,30 @@ void stateMotorDuring(void) {
 
   state = STATE_MOTOR_DURING;
 
-  // Do nothing to motor drive, as already set
+  //New ramp mode
+  // ORIGINALLY: Do nothing to motor drive, as already set, but now need to ramp if necessary
+//If in isRamped mode then calculate new voltage
+  if(isRamped){
+    if(!hasRampInitialised)   //when a new ramp command is sent to firmware this gets set to false
+    {
+      rampInitial = motorDriveVolts;    //voltage before ramping
+      rampStartTime = millis();
+      hasRampInitialised = true;
+    } 
+    else 
+    {
+      float rampValue = rampInitial + rampGradient*(millis() - rampStartTime);   //rampGradient needs to be in volts / ms
+      if(abs(rampValue) <= motorMaxCommand){
+          motor.drive(rampValue);   //should I drive here or adjust motorChangeCommand and enter motorChangeCommand state?
+      } else{
+          state = STATE_MOTOR_AFTER;
+      }
+      
+    }
+  }
+  //=======================================================================================
+
+  
 
   if (doReport) { //flag set in interrupt routine
     report();
@@ -595,6 +619,23 @@ void stateVelocityBefore(void) {
 void stateVelocityDuring(void) {
 
   state = STATE_VELOCITY_DURING; 
+
+  //New ramp mode
+//If in isRamped mode then calculate the new command to send to the controller automatically - ie not reliant on user input.
+  if(isRamped){
+    if(!hasRampInitialised)   //when a new ramp command is sent to firmware this gets set to false
+    {
+      rampInitial = disk.getVelocity();    //in internal units
+      rampStartTime = millis();
+      hasRampInitialised = true;
+    } 
+    else 
+    {
+      float rampValue = rampInitial + rampGradient*(millis() - rampStartTime);   //rampGradient needs to be in internal units / ms
+      controller.setCommand(rampValue); //automatically set controller command
+    }
+  }
+  //=======================================================================================
 
   float v, y, yp;
   float c;
@@ -1278,16 +1319,28 @@ StateType readSerialJSON(StateType state) {
 	} else if(strcmp(set, "volts")==0) {
 	  if(state == STATE_MOTOR_DURING) {
         state = STATE_MOTOR_CHANGE_COMMAND;
+        isRamped = false; 
         motorChangeCommand = doc["to"];
       } else {
         Serial.println("{\"error\":\"in wrong state to set volts\"}");
       }
 
-	} else if(strcmp(set, "position")==0) {
+	} else if(strcmp(set, "volts_ramp")==0) {
+    if(state == STATE_MOTOR_DURING) {
+        state = STATE_MOTOR_DURING;
+        isRamped = true;
+        hasRampInitialised = false;
+        rampGradient = (float)doc["to"]/1000.0;  //into volts / ms
+      } else {
+        Serial.println("{\"error\":\"in wrong state to set volts\"}");
+      }
+
+  }
+	else if(strcmp(set, "position")==0) {
       if(state == STATE_POSITION_READY || state == STATE_POSITION_DURING) {
         state = STATE_POSITION_CHANGE_COMMAND;
         positionChangeCommand = positionFromExternalUnits(doc["to"]);
-        isRamped = false;                                                             //NEW+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        isRamped = false;                                                             
       } else {
         Serial.println("{\"error\":\"in wrong state to set position\"}");
       }
@@ -1306,16 +1359,24 @@ StateType readSerialJSON(StateType state) {
 	else if(strcmp(set, "velocity")==0) {
       if(state == STATE_VELOCITY_DURING) {
         state = STATE_VELOCITY_CHANGE_COMMAND;
+        isRamped = false;
         velocityChangeCommand = velocityFromExternalUnits(doc["to"]);
-		if (debug) {
-		  Serial.print("velocityChangeCommand=");
-		  Serial.println(velocityChangeCommand);
-		}
       } else {
         Serial.println("{\"error\":\"in wrong state to set velocity\"}");
       }
 
-	} else if(strcmp(set, "mode")==0) {
+	} else if(strcmp(set, "velocity_ramp")==0) {
+      if(state == STATE_VELOCITY_DURING) {
+        state = STATE_VELOCITY_DURING;
+        isRamped = true;
+        hasRampInitialised = false;
+        rampGradient = velocityFromExternalUnits(doc["to"])/1000.0;  //into internal velocity units / ms
+      } else {
+        Serial.println("{\"error\":\"in wrong state to set velocity\"}");
+      }
+
+  }
+	else if(strcmp(set, "mode")==0) {
 
       const char* new_mode = doc["to"];
 
