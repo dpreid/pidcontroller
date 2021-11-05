@@ -131,7 +131,7 @@ float d_sig_array[4]; //derivative signal
 #define OE 7              //for enabling the level shifter.
 #define encoderPinA 2     //these pins all have interrupts on them.
 #define encoderPinB 3
-#define indexPin 4
+#define indexPin 11
 
 const float encoderPPR = 2000;
 const float LPFCoefficient = 0.9;
