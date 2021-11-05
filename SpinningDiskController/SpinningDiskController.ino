@@ -128,7 +128,7 @@ float d_sig_array[4]; //derivative signal
 
 
 /****** ENCODER *******/
-
+#define OE 7              //for enabling the level shifter.
 #define encoderPinA 2     //these pins all have interrupts on them.
 #define encoderPinB 3
 #define indexPin 4
@@ -1104,6 +1104,9 @@ void setup() {
   startTimer(timer_interrupt_freq);   //setup and start the timer interrupt functions for PID calculations
 
   while (! Serial);
+
+  pinMode(OE, OUTPUT);      //for enabling level shifter
+  digitalWrite(OE, HIGH);
 }
 
 void loop() {
