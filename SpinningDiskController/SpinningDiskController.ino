@@ -128,7 +128,7 @@ float d_sig_array[4]; //derivative signal
 
 
 /****** ENCODER *******/
-#define OE 7              //for enabling the level shifter.
+#define OE 5              //for enabling the level shifter.
 #define encoderPinA 2     //these pins all have interrupts on them.
 #define encoderPinB 3
 #define indexPin 11
