@@ -1,4 +1,7 @@
+{"set":"mode","to":"stop"}
 {"set":"mode","to":"motor"}
+{"set":"mode","to":"velocity"}
+{"set":"mode","to":"position"}
 {"set":"volts","to":65}
 {"set":"volts","to":-4}
 {"set":"volts","to":4}

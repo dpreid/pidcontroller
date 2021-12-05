@@ -32,6 +32,12 @@ bool permitOverspeed = false;
 #include <pid.h>
 #include <rotaryPlant.h>
 
+
+/**********CURRENT SENSING***********/
+#define CURRENT_1 A6
+#define CURRENT_2 A7
+
+
 /******** PID CONTROL ********/
 
 //PID parameters
@@ -516,6 +522,17 @@ void stateMotorDuring(void) {
   }
   //=======================================================================================
 
+  //testing of current sensing***********************
+//  uint32_t I_1 = analogRead(CURRENT_1);
+//  uint32_t I_2 = analogRead(CURRENT_2);
+//  if(I_1 > I_2){
+//    Serial.print("Current 1 = ");
+//    Serial.println(I_1);
+//  } else{
+//    Serial.print("Current 2 = ");
+//    Serial.println(I_2);
+//  }
+    
   
 
   if (doReport) { //flag set in interrupt routine
@@ -887,6 +904,17 @@ void statePositionDuring(void) {
     }
   }
   //=======================================================================================
+  //testing of current sensing***********************
+  
+//  uint32_t I_1 = analogRead(CURRENT_1);
+//  uint32_t I_2 = analogRead(CURRENT_2);
+//  if(I_1 > I_2){
+//    Serial.print("Current 1 = ");
+//    Serial.println(I_1);
+//  } else{
+//    Serial.print("Current 2 = ");
+//    Serial.println(I_2);
+//  }
 
   float v, p, y, yp;
   float c, error, errp;
@@ -1079,6 +1107,11 @@ void setup() {
 
   attachInterrupt(digitalPinToInterrupt(encoderPinA), counterA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB), counterB, CHANGE);
+
+
+  //new pin assignments for current sensing
+  pinMode(CURRENT_1, INPUT);
+  pinMode(CURRENT_2, INPUT);
   
   driverMotor.threshold = 0.0; //don't use second curve
   driverMotor.primaryOffsetPos = motorPrimaryOffsetPos; 
