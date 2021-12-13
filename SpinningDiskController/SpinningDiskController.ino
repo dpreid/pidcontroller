@@ -1010,9 +1010,9 @@ void statePositionChangeCommand(void) {
   if(positionChangeCommand >= positionCommandMin && positionChangeCommand <= positionCommandMax) {
 
     controller.setCommand(positionChangeCommand);
-	Serial.print("{\"info\":\"new position command\",\"c\":\"");
-	Serial.print(positionToExternalUnits(controller.getCommand()));
-	Serial.println("\"}"); 
+	//Serial.print("{\"info\":\"new position command\",\"c\":\"");
+	//Serial.print(positionToExternalUnits(controller.getCommand()));
+	//Serial.println("\"}"); 
   } else {
     Serial.println("{\"error\":\"cannot command position outside range\"}");
 	Serial.println("{​\"error\":\"command\",\"type\":\"limit\",\"state\":\"position\"}");
