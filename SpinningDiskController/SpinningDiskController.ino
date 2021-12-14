@@ -482,7 +482,7 @@ void stateStoppingAfter(void) {
 
   state = STATE_STOPPED;
 
-  // deliberately empty state
+  ledDrive(0,0);
 
 }
 
@@ -501,7 +501,7 @@ void stateMotorBefore(void) {
 
   state = STATE_MOTOR_DURING;
 
-  ledError(false);
+  ledError(0);
 
   lastCommandMillis = millis();
 
@@ -554,14 +554,14 @@ void stateMotorDuring(void) {
 
   if (velocityLimitCount > velocityLimitCountThreshold) {
   	state = STATE_MOTOR_AFTER;
-    ledError(true);
+    ledError(1);
   	Serial.println("{\"error\":\"velocity limit exceeded\"}");
   	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
  
   
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
-    ledError(true);
+    ledError(1);
   	Serial.println("{\"warn\":\"maximum run time exceeded\"}");
   	Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
     state = STATE_MOTOR_AFTER;
@@ -643,7 +643,7 @@ void stateVelocityBefore(void) {
 
   state = STATE_VELOCITY_DURING;
 
-  ledError(false);
+  ledError(0);
 
   lastCommandMillis = millis();
 
@@ -804,7 +804,7 @@ void stateVelocityDuring(void) {
 
   if (velocityLimitCount > velocityLimitCountThreshold) {
   	state = STATE_VELOCITY_AFTER;
-    ledError(true);
+    ledError(1);
   	Serial.println("{\"error\":\"velocity limit exceeded\"}");
   	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
@@ -815,7 +815,7 @@ void stateVelocityDuring(void) {
     if (millis() >= lastCommandMillis + shutdownTimeMillis) {
   	  Serial.println("{\"warn\":\"maximum run time exceeded\"}");
   	  Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
-      ledError(true);
+      ledError(1);
       state = STATE_VELOCITY_AFTER;
     }
   }
@@ -879,7 +879,7 @@ void statePositionBefore(void) {
 
   state = STATE_POSITION_BEFORE;
 
-  ledError(false);
+  ledError(0);
 
   lastCommandMillis = millis();
 
@@ -1082,7 +1082,7 @@ void statePositionDuring(void) {
   
   if (positionLimitCount > positionLimitCountThreshold)  {
   	state = STATE_POSITION_AFTER;
-    ledError(true);
+    ledError(1);
   	Serial.println("{\"error\":\"position limit exceeded\"}");
   	Serial.println("{​\"error\":\"limit\",\"type\":\"position\",\"state\":\"stopping\"}");
   }
@@ -1096,7 +1096,7 @@ void statePositionDuring(void) {
 
   if (velocityLimitCount > velocityLimitCountThreshold) {
   	state = STATE_MOTOR_AFTER;
-    ledError(true);
+    ledError(1);
   	Serial.println("{\"error\":\"velocity limit exceeded\"}");
   	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
@@ -1105,7 +1105,7 @@ void statePositionDuring(void) {
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
   	Serial.println("{\"info\":\"maximum run time exceeded\"}");
   	Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
-    ledError(true);
+    ledError(1);
     state = STATE_POSITION_AFTER;
   }
 
@@ -1399,8 +1399,8 @@ void ledDrive(float drive, float minVolt){
  }
 }
 
-void ledError(bool error){
-  if(error){
+void ledError(int error){
+  if(error == 1){
     digitalWrite(LED_ERROR, HIGH);
   } else{
     digitalWrite(LED_ERROR, LOW);
