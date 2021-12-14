@@ -10,6 +10,7 @@
  * Modifed by Tim Drysdale Feb 2021
  *
  *Modified by David Reid Sep 2021 - Updated for new motor and driver. Added array of data points every 5ms but sent every 20ms. Added ramp input.
+ *Modified by David Reid Dec 2021 - Added current sensing logic and LED display.
  */
 
 
@@ -37,6 +38,13 @@ bool permitOverspeed = false;
 #define CURRENT_1 A6
 #define CURRENT_2 A7
 
+
+/*********** LED DISPLAY ***********/
+#define LED_POWER 13
+#define LED_FORWARD 16
+#define LED_REVERSE A3
+
+const float minVoltLED = 0.2;
 
 /******** PID CONTROL ********/
 
@@ -299,6 +307,8 @@ typedef enum
   STATE_MOTOR_CHANGE_PARAMETERS,
   STATE_MOTOR_AFTER,
   STATE_VELOCITY_BEFORE,
+  STATE_VELOCITY_WAITING,
+  STATE_VELOCITY_READY,
   STATE_VELOCITY_DURING, 
   STATE_VELOCITY_CHANGE_COMMAND,
   STATE_VELOCITY_CHANGE_PARAMETERS,
@@ -319,6 +329,8 @@ void stateStoppingDuring(void);
 void stateStoppingAfter(void);
 void stateStopped(void);
 void stateMotorBefore(void);
+void stateVelocityWaiting(void);
+void stateVelocityReady(void);
 void stateMotorDuring(void);
 void stateMotorChangeCommand(void);
 void stateMotorChangeParameters(void);
@@ -362,6 +374,8 @@ StateMachineType StateMachine[] =
   {STATE_MOTOR_CHANGE_PARAMETERS,    stateMotorChangeParameters},
   {STATE_MOTOR_AFTER,                stateMotorAfter},
   {STATE_VELOCITY_BEFORE,            stateVelocityBefore},
+  {STATE_VELOCITY_WAITING,           stateVelocityWaiting},
+  {STATE_VELOCITY_READY,             stateVelocityReady},
   {STATE_VELOCITY_DURING,            stateVelocityDuring},
   {STATE_VELOCITY_CHANGE_COMMAND,    stateVelocityChangeCommand},
   {STATE_VELOCITY_CHANGE_PARAMETERS, stateVelocityChangeParameters},
@@ -375,7 +389,7 @@ StateMachineType StateMachine[] =
   {STATE_POSITION_AFTER,             statePositionAfter},
 };
 
-int numStates = 21;
+int numStates = 23;
 
 /**
  * Stores the current state of the state machine
@@ -580,6 +594,8 @@ void stateMotorChangeCommand(void) {
 	
 	//motorDriveVolts = yp * motorMaxVolts;
  motorDriveVolts = motorChangeCommand;
+
+ ledDisplay(motorDriveVolts, 0);
 	
 	if (debug) {
 	  Serial.print("Changed motorCommand to ");
@@ -632,6 +648,75 @@ void stateVelocityBefore(void) {
   report_integer = reportVelocity;
 }
 
+void stateVelocityWaiting(void) {
+
+  state = STATE_VELOCITY_WAITING;
+
+  // since we from DURING,where the disk can be spinning,
+  // we need to duplicate some commands from the stopping and before states
+  // to ensure the disk is stopped. 
+   
+  motor.brake(); //This is just free-wheeling, so needs no further commands.
+  motorDriveVolts = 0;
+  velocityChangeCommand = 0;
+  
+  lastCommandMillis = millis();
+
+  velocityLimitCount = 0;
+  positionLimitCount = 0;
+
+  float v = disk.getVelocity();
+
+  if ( abs(v) <= velocityEpsilon) { //disk is stopped enough
+
+  controller.setLimits(-velocityMaxRPS,velocityMaxRPS);
+  controller.setCommand(velocityChangeCommand);
+
+  report_integer = reportVelocity;
+
+  ledDisplay(motorDriveVolts, minVoltLED);
+  
+
+  state = STATE_VELOCITY_READY;
+  
+  if (debug) Serial.println("Disk stopped");
+  
+  } else {
+
+  if (debug) {
+    requestSerial();
+    Serial.print("Disk not stopped, v = ");
+    Serial.println(v);
+    releaseSerial();
+  }
+  
+    if (doReport) { //flag set in interrupt routine
+  report();
+  doReport = false; //clear flag so can run again later
+  }
+  
+  }
+
+}
+
+void stateVelocityReady(void) {
+
+  state = STATE_VELOCITY_READY;
+
+  // this state just reports the current values
+  
+  // the PID coefficients can be updated at will
+  // before starting the run.
+
+  // do NOT update the PID controller in this state
+  // so we keep zero'd history until we go to DURING
+  
+  if (doReport) { //flag set in interrupt routine
+  report();
+  doReport = false; //clear flag so can run again later
+  }
+}
+
 
 void stateVelocityDuring(void) {
 
@@ -668,6 +753,9 @@ void stateVelocityDuring(void) {
 	
 	motor.drive(yp);
   motorDriveVolts = yp;
+
+  ledDisplay(motorDriveVolts, minVoltLED);
+  
   }
 
   if (doReport) { //flag set in interrupt routine
@@ -731,9 +819,9 @@ void stateVelocityChangeCommand(void) {
 
   if (abs(velocityChangeCommand) <= velocityCommandMax) {
 	controller.setCommand(velocityChangeCommand);
-	Serial.print("{\"info\":\"new velocity command\",\"c\":\"");
-	Serial.print(velocityToExternalUnits(controller.getCommand()));
-	Serial.println("\"}"); 
+//	Serial.print("{\"info\":\"new velocity command\",\"c\":\"");
+//	Serial.print(velocityToExternalUnits(controller.getCommand()));
+//	Serial.println("\"}"); 
   } else {
 	Serial.println("{\"error\":\"cannot command velocity outside range\"}");
 	Serial.println("{​\"error\":\"command\",\"type\":\"limit\",\"state\":\"velocity\"}");
@@ -842,6 +930,8 @@ void statePositionWaiting(void) {
 
 	report_integer = reportPosition;
 
+  ledDisplay(motorDriveVolts, minVoltLED);
+
 	state = STATE_POSITION_READY;
 	
 	if (debug) Serial.println("Disk zeroed");
@@ -937,6 +1027,11 @@ void statePositionDuring(void) {
 	
 	motor.drive(yp);
 	motorDriveVolts = yp;
+
+
+  ledDisplay(motorDriveVolts, minVoltLED);
+ 
+
   }
 
   if (doReport) { //flag set in interrupt routine
@@ -1112,6 +1207,13 @@ void setup() {
   //new pin assignments for current sensing
   pinMode(CURRENT_1, INPUT);
   pinMode(CURRENT_2, INPUT);
+
+  //new pins for LED display
+  pinMode(LED_POWER, OUTPUT);
+  pinMode(LED_FORWARD, OUTPUT);
+  pinMode(LED_REVERSE, OUTPUT);
+  
+  digitalWrite(LED_POWER, HIGH);
   
   driverMotor.threshold = 0.0; //don't use second curve
   driverMotor.primaryOffsetPos = motorPrimaryOffsetPos; 
@@ -1260,6 +1362,19 @@ void changePIDCoefficients(void) {
 
 }
 
+void ledDisplay(float drive, float minVolt){
+  if(drive > minVolt){
+  digitalWrite(LED_FORWARD, HIGH);
+  digitalWrite(LED_REVERSE, LOW);
+ } else if(drive < -minVolt){
+  digitalWrite(LED_FORWARD, LOW);
+  digitalWrite(LED_REVERSE, HIGH);
+ } else{
+  digitalWrite(LED_FORWARD, LOW);
+  digitalWrite(LED_REVERSE, LOW);
+ }
+}
+
 /*  Unit conversion functions
  *
  *  Our internal units are normalised
@@ -1393,7 +1508,7 @@ StateType readSerialJSON(StateType state) {
 
  }
 	else if(strcmp(set, "velocity")==0) {
-      if(state == STATE_VELOCITY_DURING) {
+      if(state == STATE_VELOCITY_READY || state == STATE_VELOCITY_DURING) {
         state = STATE_VELOCITY_CHANGE_COMMAND;
         isRamped = false;
         velocityChangeCommand = velocityFromExternalUnits(doc["to"]);
@@ -1402,7 +1517,7 @@ StateType readSerialJSON(StateType state) {
       }
 
 	} else if(strcmp(set, "velocity_ramp")==0) {
-      if(state == STATE_VELOCITY_DURING) {
+      if(state == STATE_VELOCITY_READY || state == STATE_VELOCITY_DURING) {
         state = STATE_VELOCITY_DURING;
         isRamped = true;
         hasRampInitialised = false;
@@ -1431,9 +1546,11 @@ StateType readSerialJSON(StateType state) {
           state = STATE_STOPPING_BEFORE;
         }
         if(strcmp(new_mode, "wait") == 0) {
-		  if ( state == STATE_POSITION_DURING ) {
-          state = STATE_POSITION_WAITING;
-		  }
+    		  if ( state == STATE_POSITION_DURING ) {
+              state = STATE_POSITION_WAITING;
+    		  } else if(state == STATE_VELOCITY_DURING){
+            state = STATE_VELOCITY_WAITING;
+    		  }
         }		
       }
 
@@ -1477,7 +1594,7 @@ StateType readSerialJSON(StateType state) {
       if (isNewKp || isNewKi || isNewKd || isNewTs || isNewN) {
         if ( state == STATE_POSITION_READY) {
           state = STATE_POSITION_CHANGE_PARAMETERS;
-        } else if (state == STATE_VELOCITY_DURING) {
+        } else if (state == STATE_VELOCITY_DURING || state == STATE_VELOCITY_READY) {
           state = STATE_VELOCITY_CHANGE_PARAMETERS;
         } else {
           if (debug) Serial.println("{\"error\":\"in wrong state to set coefficients\"}");
