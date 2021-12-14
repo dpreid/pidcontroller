@@ -160,10 +160,14 @@ const float positionPlantMax = 5;
 const float positionLimitMin  = -2; // limits for state to enforce
 const float positionLimitMax = 2;
 
+const float currentLimit = 200;
+
 volatile int velocityLimitCount = 0;
 volatile int positionLimitCount = 0;
+volatile int currentLimitCount = 0;
 const int velocityLimitCountThreshold = 10;
 const int positionLimitCountThreshold = 10;
+const int currentLimitCountThreshold = 10;
 
 volatile float velocity_angular_velocity = 0; //for velocity mode velocity reporting
 unsigned long velocity_current_time_encoder = 0;
@@ -534,20 +538,6 @@ void stateMotorDuring(void) {
       
     }
   }
-  //=======================================================================================
-
-  //testing of current sensing***********************
-//  uint32_t I_1 = analogRead(CURRENT_1);
-//  uint32_t I_2 = analogRead(CURRENT_2);
-//  if(I_1 > I_2){
-//    Serial.print("Current 1 = ");
-//    Serial.println(I_1);
-//  } else{
-//    Serial.print("Current 2 = ");
-//    Serial.println(I_2);
-//  }
-    
-  
 
   if (doReport) { //flag set in interrupt routine
     report();
@@ -572,6 +562,19 @@ void stateMotorDuring(void) {
 	Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
     state = STATE_MOTOR_AFTER;
   }
+
+  //overcurrent and overtemp protection from BTN8982 motor shield
+//  if (analogRead(CURRENT_1) > currentLimit || analogRead(CURRENT_2) > currentLimit) {
+//    currentLimitCount++;
+//  } else {
+//    currentLimitCount = 0;
+//  }
+//  
+//  if (currentLimitCount > currentLimitCountThreshold) {
+//    state = STATE_MOTOR_AFTER;
+//    Serial.println("{\"error\":\"current and temp limit exceeded\"}");
+//    Serial.println("{​\"error\":\"limit\",\"type\":\"current\",\"state\":\"stopping\"}");
+//  }
 
 }
 
@@ -737,7 +740,6 @@ void stateVelocityDuring(void) {
       controller.setCommand(rampValue); //automatically set controller command
     }
   }
-  //=======================================================================================
 
   float v, y, yp;
   float c;
@@ -809,6 +811,19 @@ void stateVelocityDuring(void) {
       state = STATE_VELOCITY_AFTER;
     }
   }
+
+  //overcurrent and overtemp protection from BTN8982 motor shield
+//  if (analogRead(CURRENT_1) > currentLimit || analogRead(CURRENT_2) > currentLimit) {
+//    currentLimitCount++;
+//  } else {
+//    currentLimitCount = 0;
+//  }
+//  
+//  if (currentLimitCount > currentLimitCountThreshold) {
+//    state = STATE_VELOCITY_AFTER;
+//    Serial.println("{\"error\":\"current and temp limit exceeded\"}");
+//    Serial.println("{​\"error\":\"limit\",\"type\":\"current\",\"state\":\"stopping\"}");
+//  }
 }
 
 void stateVelocityChangeCommand(void) {
@@ -993,18 +1008,6 @@ void statePositionDuring(void) {
       controller.setCommand(rampValue); //automatically set controller command
     }
   }
-  //=======================================================================================
-  //testing of current sensing***********************
-  
-//  uint32_t I_1 = analogRead(CURRENT_1);
-//  uint32_t I_2 = analogRead(CURRENT_2);
-//  if(I_1 > I_2){
-//    Serial.print("Current 1 = ");
-//    Serial.println(I_1);
-//  } else{
-//    Serial.print("Current 2 = ");
-//    Serial.println(I_2);
-//  }
 
   float v, p, y, yp;
   float c, error, errp;
@@ -1092,6 +1095,19 @@ void statePositionDuring(void) {
 	Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
     state = STATE_POSITION_AFTER;
   }
+
+  //overcurrent and overtemp protection from BTN8982 motor shield
+//  if (analogRead(CURRENT_1) > currentLimit || analogRead(CURRENT_2) > currentLimit) {
+//    currentLimitCount++;
+//  } else {
+//    currentLimitCount = 0;
+//  }
+//  
+//  if (currentLimitCount > currentLimitCountThreshold) {
+//    state = STATE_POSITION_AFTER;
+//    Serial.println("{\"error\":\"current and temp limit exceeded\"}");
+//    Serial.println("{​\"error\":\"limit\",\"type\":\"current\",\"state\":\"stopping\"}");
+//  }
 
 }
 
