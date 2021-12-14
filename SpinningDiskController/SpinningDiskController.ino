@@ -41,8 +41,8 @@ bool permitOverspeed = false;
 
 /*********** LED DISPLAY ***********/
 #define LED_POWER 13
-#define LED_FORWARD 16
-#define LED_REVERSE A3
+#define LED_DRIVE 16
+#define LED_ERROR 17
 
 const float minVoltLED = 0.2;
 
@@ -501,6 +501,8 @@ void stateMotorBefore(void) {
 
   state = STATE_MOTOR_DURING;
 
+  ledError(false);
+
   lastCommandMillis = millis();
 
   velocityLimitCount = 0;
@@ -545,21 +547,23 @@ void stateMotorDuring(void) {
   }
 
   if (abs(disk.getVelocity()) > velocityLimit) {
-	velocityLimitCount++;
+	  velocityLimitCount++;
   } else {
-	velocityLimitCount = 0;
+	  velocityLimitCount = 0;
   }
 
   if (velocityLimitCount > velocityLimitCountThreshold) {
-	state = STATE_MOTOR_AFTER;
-	Serial.println("{\"error\":\"velocity limit exceeded\"}");
-	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
+  	state = STATE_MOTOR_AFTER;
+    ledError(true);
+  	Serial.println("{\"error\":\"velocity limit exceeded\"}");
+  	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
  
   
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
-	Serial.println("{\"warn\":\"maximum run time exceeded\"}");
-	Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
+    ledError(true);
+  	Serial.println("{\"warn\":\"maximum run time exceeded\"}");
+  	Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
     state = STATE_MOTOR_AFTER;
   }
 
@@ -598,7 +602,7 @@ void stateMotorChangeCommand(void) {
 	//motorDriveVolts = yp * motorMaxVolts;
  motorDriveVolts = motorChangeCommand;
 
- ledDisplay(motorDriveVolts, 0);
+ ledDrive(motorDriveVolts, 0);
 	
 	if (debug) {
 	  Serial.print("Changed motorCommand to ");
@@ -639,6 +643,8 @@ void stateVelocityBefore(void) {
 
   state = STATE_VELOCITY_DURING;
 
+  ledError(false);
+
   lastCommandMillis = millis();
 
   velocityLimitCount = 0;
@@ -677,7 +683,7 @@ void stateVelocityWaiting(void) {
 
   report_integer = reportVelocity;
 
-  ledDisplay(motorDriveVolts, minVoltLED);
+  ledDrive(motorDriveVolts, minVoltLED);
   
 
   state = STATE_VELOCITY_READY;
@@ -756,7 +762,7 @@ void stateVelocityDuring(void) {
 	motor.drive(yp);
   motorDriveVolts = yp;
 
-  ledDisplay(motorDriveVolts, minVoltLED);
+  ledDrive(motorDriveVolts, minVoltLED);
   
   }
 
@@ -797,17 +803,19 @@ void stateVelocityDuring(void) {
   }
 
   if (velocityLimitCount > velocityLimitCountThreshold) {
-	state = STATE_MOTOR_AFTER;
-	Serial.println("{\"error\":\"velocity limit exceeded\"}");
-	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
+  	state = STATE_VELOCITY_AFTER;
+    ledError(true);
+  	Serial.println("{\"error\":\"velocity limit exceeded\"}");
+  	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
   
   
   // It's ok to wait in a state a long time if we are NOT using the motor
   if (!cmpf(controller.getCommand(),0, velocityEpsilon)) {
     if (millis() >= lastCommandMillis + shutdownTimeMillis) {
-	  Serial.println("{\"warn\":\"maximum run time exceeded\"}");
-	  Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
+  	  Serial.println("{\"warn\":\"maximum run time exceeded\"}");
+  	  Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
+      ledError(true);
       state = STATE_VELOCITY_AFTER;
     }
   }
@@ -870,6 +878,8 @@ void stateVelocityAfter(void) {
 void statePositionBefore(void) {
 
   state = STATE_POSITION_BEFORE;
+
+  ledError(false);
 
   lastCommandMillis = millis();
 
@@ -945,7 +955,7 @@ void statePositionWaiting(void) {
 
 	report_integer = reportPosition;
 
-  ledDisplay(motorDriveVolts, minVoltLED);
+  ledDrive(motorDriveVolts, minVoltLED);
 
 	state = STATE_POSITION_READY;
 	
@@ -1032,7 +1042,7 @@ void statePositionDuring(void) {
 	motorDriveVolts = yp;
 
 
-  ledDisplay(motorDriveVolts, minVoltLED);
+  ledDrive(motorDriveVolts, minVoltLED);
  
 
   }
@@ -1065,34 +1075,37 @@ void statePositionDuring(void) {
 
   // Disk can go unstable, and oscillate over a large amplitude - prevent!
   if (p > positionLimitMax || p < positionLimitMin ) {
-	positionLimitCount++;
+	  positionLimitCount++;
   } else {
-	positionLimitCount = 0;
+	  positionLimitCount = 0;
   }
   
   if (positionLimitCount > positionLimitCountThreshold)  {
-	state = STATE_POSITION_AFTER;
-	Serial.println("{\"error\":\"position limit exceeded\"}");
-	Serial.println("{​\"error\":\"limit\",\"type\":\"position\",\"state\":\"stopping\"}");
+  	state = STATE_POSITION_AFTER;
+    ledError(true);
+  	Serial.println("{\"error\":\"position limit exceeded\"}");
+  	Serial.println("{​\"error\":\"limit\",\"type\":\"position\",\"state\":\"stopping\"}");
   }
 
 
   if (abs(disk.getVelocity()) > velocityLimit) {
-	velocityLimitCount++;
+	  velocityLimitCount++;
   } else {
-	velocityLimitCount = 0;
+	  velocityLimitCount = 0;
   }
 
   if (velocityLimitCount > velocityLimitCountThreshold) {
-	state = STATE_MOTOR_AFTER;
-	Serial.println("{\"error\":\"velocity limit exceeded\"}");
-	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
+  	state = STATE_MOTOR_AFTER;
+    ledError(true);
+  	Serial.println("{\"error\":\"velocity limit exceeded\"}");
+  	Serial.println("{​\"error\":\"limit\",\"type\":\"velocity\",\"state\":\"stopping\"}");
   }
   
   // Disk can sometimes oscillate, so shutdown on timeout.
   if (millis() >= lastCommandMillis + shutdownTimeMillis) {
-	Serial.println("{\"info\":\"maximum run time exceeded\"}");
-	Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
+  	Serial.println("{\"info\":\"maximum run time exceeded\"}");
+  	Serial.println("{​\"error\":\"limit\",\"type\":\"time\",\"state\":\"stopping\"}");
+    ledError(true);
     state = STATE_POSITION_AFTER;
   }
 
@@ -1226,8 +1239,8 @@ void setup() {
 
   //new pins for LED display
   pinMode(LED_POWER, OUTPUT);
-  pinMode(LED_FORWARD, OUTPUT);
-  pinMode(LED_REVERSE, OUTPUT);
+  pinMode(LED_DRIVE, OUTPUT);
+  pinMode(LED_ERROR, OUTPUT);
   
   digitalWrite(LED_POWER, HIGH);
   
@@ -1378,17 +1391,21 @@ void changePIDCoefficients(void) {
 
 }
 
-void ledDisplay(float drive, float minVolt){
+void ledDrive(float drive, float minVolt){
   if(drive > minVolt){
-  digitalWrite(LED_FORWARD, HIGH);
-  digitalWrite(LED_REVERSE, LOW);
- } else if(drive < -minVolt){
-  digitalWrite(LED_FORWARD, LOW);
-  digitalWrite(LED_REVERSE, HIGH);
+    digitalWrite(LED_DRIVE, HIGH);
  } else{
-  digitalWrite(LED_FORWARD, LOW);
-  digitalWrite(LED_REVERSE, LOW);
+    digitalWrite(LED_DRIVE, LOW);
  }
+}
+
+void ledError(bool error){
+  if(error){
+    digitalWrite(LED_ERROR, HIGH);
+  } else{
+    digitalWrite(LED_ERROR, LOW);
+  }
+  
 }
 
 /*  Unit conversion functions
