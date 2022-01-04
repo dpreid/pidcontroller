@@ -129,7 +129,7 @@ float shutdownTimeMillis = 0.5 * longestShutdownTimeMillis;
 
 // ARRAYS for storing data at larger time resolution
 
-float t_array[4]; //time
+unsigned long t_array[4]; //time
 float d_array[4]; //position displacement
 float v_array[4]; //velocity
 float y_array[4]; //motorDrive
