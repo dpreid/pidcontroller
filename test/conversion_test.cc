@@ -62,6 +62,33 @@ TEST(Conversion, JustUnderTwoPower24Millis) {
   
 }
 
+TEST(Conversion, TwoPower24MillisDelta4) {
+
+  unsigned long i = 	16777216;  
+  float t0 = (float) i;
+  float t1 = (float) i+4;
+  EXPECT_TRUE(t1 > t0);
+  
+}
+
+TEST(Conversion, JustUnderTwoPower26MillisDelta4) {
+
+  unsigned long i = 67108859;	
+  float t0 = (float) i;
+  float t1 = (float) i+4;
+  EXPECT_TRUE(t1 > t0);
+  
+}
+
+TEST(Conversion, TwoPower26MillisDelta4) {
+
+  unsigned long i = 67108864;	
+  float t0 = (float) i;
+  float t1 = (float) i+4;
+  EXPECT_TRUE(t1 > t0);
+  
+}
+
 
 TEST(Conversion, TwoPower24Millis) {
 
