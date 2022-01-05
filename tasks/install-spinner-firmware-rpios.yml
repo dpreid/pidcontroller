@@ -1,0 +1,38 @@
+---
+  - name: Create sources directory if it does not exist
+    file:
+      path: /home/pi/sources
+      state: directory
+  
+  - name: Get stats of the arduino-cli binary to check it exists 
+    ansible.builtin.stat:
+      path: /usr/local/bin/arduino-cli
+    register: st
+  
+  - name: Print a debug message if arduino-cli not installed
+    ansible.builtin.debug:
+      msg: "arduino-cli is not installed"
+    when: st.stat.exists == False
+    
+  - git:
+      repo: https://github.com/dpreid/pidcontroller.git
+      dest: /home/pi/sources/pidcontroller
+      update: yes
+     
+  - name: Update core index arduino
+    command: arduino-cli core update-index
+
+  - name: Install samd core arduino
+    command: arduino-cli core install arduino:samd
+
+  - name: Compile spinner firmware
+    command: arduino-cli compile --fqbn arduino:samd:nano_33_iot SpinningDiskController/ --libraries ./libraries
+    args:
+      chdir: /home/pi/sources/pidcontroller
+
+  - name: Load spinner firmware onto arduino
+    command: arduino-cli upload --port /dev/ttyACM0 --fqbn arduino:samd:nano_33_iot SpinningDiskController/
+    args:
+      chdir: /home/pi/sources/pidcontroller    
+    
+
