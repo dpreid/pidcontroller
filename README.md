@@ -1,32 +1,14 @@
 # pidcontroller
 
+April 2022: This repo has now been superseded by separate repos for each of the experiments, to make it easier to keep track of separate developments. For example, the spinning disk controller has had a motor upgrade to reduce variability, but the governor and digger have not (variability arising from the friction in the nidec motor is quite useful to demonstrate real world effects).
 
-SpinningDiskController has been updated to Version 2.0 using a new motor and driver as well as a larger state machine. It also has firmware based ramp inputs. 
+Firmware can now be found as follows (in the `./fw` subdirectory):
 
-Other Arduino sketches remain in Version 1.0.
-
-## Installing firmware on raspberry pi via cli
-
-
-install the arduino-cli if not already installed
-
-```
-arduino-cli core update-index
-arduino-cli core install arduino:samd
-```
-
-
-```
-mkdir -p ~/sources
-cd ~/sources
-git clone  https://github.com/dpreid/pidcontroller.git
-cd pidcontroller
-arduino-cli compile --fqbn arduino:samd:nano_33_iot SpinningDiskController/ --libraries ./libraries
-arduino-cli upload --port /dev/ttyACM0 --fqbn arduino:samd:nano_33_iot SpinningDiskController/
-```
-
-Note: for testing a fix in fork of the repo before submitting pull request, you can change the remote origin of the pidcontroller repo on the rpi
-
-```
-git remote set-url origin https://github.com/your-user-name/pidcontroller.git
-```
+  - Spinning Disk (AMAX version 2022) [github.com/practable/spinner-amax](https://github.com/practable/spinner-amax) 
+  - Spinning Disk (Nidec version 2021) [github.com/practable/spinner-nidec](https://github.com/practable/spinner-nidec) 
+  - Governor (Nidec version 2021) [github.com/practable/governor-nidec](https://github.com/practable/governor-nidec) 
+  - Digger (Nidec version 2021) [github.com/practable/digger-nidec](https://github.com/practable/digger-nidec) 
+  
+  
+  
+  
